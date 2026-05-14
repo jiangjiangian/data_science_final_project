@@ -1,0 +1,43 @@
+{
+  "n_train": 113,
+  "n_valid": 88,
+  "n_test": 47,
+  "home_win_base_rate_train": 0.504424778761062,
+  "winner": "tuned_rf",
+  "winner_holdout": {
+    "n": 47,
+    "accuracy": 0.6382978723404256,
+    "auc": 0.6563636363636364,
+    "brier": 0.24120245826012043,
+    "log_loss": 0.6819983152111044,
+    "model": "tuned_rf"
+  },
+  "calibrated_holdout": {
+    "n": 47,
+    "accuracy": 0.5319148936170213,
+    "auc": 0.5363636363636364,
+    "brier": 0.2521433685530425,
+    "log_loss": 0.6975676748949423
+  },
+  "best_params": {
+    "xgb": {
+      "clf__learning_rate": 0.1,
+      "clf__max_depth": 2,
+      "clf__n_estimators": 200
+    },
+    "lgb": {
+      "clf__learning_rate": 0.05,
+      "clf__n_estimators": 200,
+      "clf__num_leaves": 15
+    },
+    "elastic": {
+      "clf__C": 0.3,
+      "clf__l1_ratio": 0.8
+    },
+    "rf": {
+      "clf__max_depth": 8,
+      "clf__min_samples_leaf": 3,
+      "clf__n_estimators": 200
+    }
+  }
+}
