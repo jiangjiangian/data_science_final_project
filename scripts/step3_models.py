@@ -1,51 +1,63 @@
 """
 scripts/step3_models.py
 
-Step 3 — Train m1..m7 ablation + 5-algorithm comparison + tuning + holdout.
+Step 3 — m1..m7 ablation + algorithm comparison + tuning + honest holdout
+         + ONE calibration + dual-threshold report + Shiny artifacts.
 
-Time-aware splits:
-  train = games BEFORE 2024-08-01     (~ first 200 games warm-up + early season)
-  valid = 2024-08-01  to  2024-09-15   (~mid-to-late season, CV-window-like)
-  test  = 2024-09-16  through end      (Sep-Oct + playoffs; held out)
+Time-aware splits (NEVER random — this is time-series sports data):
+  train = games BEFORE 2024-08-01
+  valid = 2024-08-01 .. 2024-09-15
+  test  = 2024-09-16 .. end (Sep-Oct + playoffs; held out, untouched in fit)
 
-Models trained:
-  - m1: intercept only (HFA baseline)
-  - m2..m7: progressive ablation (stadium, weather, team-strength, batter-state)
-    NB: weather features not available in sandbox -> m3/m5/m6/m7 currently use
-        a "no_weather" variant. R production version (step3 mirror) reads
-        weather merged in via R/fetch_cwa.R output.
+Ablation (algorithm FIXED = logistic; only the feature set varies — this is
+the textbook way to quantify each group's marginal contribution):
+  m1 intercept only            (pure home-field advantage baseline)
+  m2 stadium only
+  m3 weather only
+  m4 team-strength only        (Elo / Pythagenpat / rest / park-factor)
+  m5 batter-state only         (rolling lineup form: OPS/HR/K%/BB%/runs diff)
+  m6 stadium + weather         (charter "environment-full")
+  m7 FULL  (stadium + weather + team-strength + batter-state)
 
-Algorithms compared on full feature set (m7+):
-  logit, glmnet (ElasticNet), RandomForest, XGBoost, LightGBM
+Algorithm comparison (features FIXED = full m7; only the algorithm varies):
+  logit, glmnet(l2), glmnet(elasticnet), RandomForest, XGBoost, LightGBM
+  -> tuned with TimeSeriesSplit CV; WINNER chosen by CV-AUC (the holdout
+     N is tiny and noisy, so we do NOT pick on holdout).
+
+One calibration only: isotonic via time-aware CV on train+valid (stacking and
+extra calibration layers are noise at this N — reported with a bootstrap CI
+so the reader sees the uncertainty instead of a false-precision number).
 
 Outputs:
-  Results/figures/model_comparison.png
-  Results/figures/calibration.png
-  Results/figures/shap_summary.png
-  Results/eval/results_ablation.csv
-  Results/eval/results_algos.csv
+  models/best_model.joblib                 (calibrated winner, for inference)
+  Results/eval/predictions.csv             (leak-free OOF per game — Shiny src)
+  Results/eval/feature_schema.json         (Shiny input contract)
+  Results/eval/results_ablation.csv | results_algos.csv | results_tuned.csv
   Results/eval/_final_metrics.json
+  Results/figures/model_comparison.png | calibration.png | shap_summary.png
 """
 import json
 import warnings
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.base import clone
+from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
+                             brier_score_loss, f1_score, log_loss,
+                             roc_auc_score)
+from sklearn.model_selection import (GridSearchCV, TimeSeriesSplit,
+                                     cross_val_predict)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.calibration import CalibratedClassifierCV, calibration_curve
-from sklearn.metrics import (
-    roc_auc_score, accuracy_score, brier_score_loss, log_loss,
-    confusion_matrix, classification_report
-)
-from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
-import xgboost as xgb
 import lightgbm as lgb
+import xgboost as xgb
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -55,414 +67,440 @@ ROOT = Path(__file__).resolve().parent.parent
 IN_CSV = ROOT / "data/processed/model_ready_data.csv"
 FIG = ROOT / "Results/figures"
 EVAL = ROOT / "Results/eval"
-FIG.mkdir(parents=True, exist_ok=True)
-EVAL.mkdir(parents=True, exist_ok=True)
+MODELS = ROOT / "models"
+for d in (FIG, EVAL, MODELS):
+    d.mkdir(parents=True, exist_ok=True)
 
 RNG = 42
+TARGET = "is_home_win"
 
 # ============================================================================
-# Load
+# Load + warm-up filter + time-aware split
 # ============================================================================
 df = pd.read_csv(IN_CSV, parse_dates=["date"])
 print(f"loaded {len(df)} games  cols={df.shape[1]}")
-
-# Use only rows with complete rolling features (post warm-up)
 df = df[df["features_complete"] == 1].reset_index(drop=True)
-print(f"after warm-up filter: {len(df)} games")
-print(f"home_win base rate: {df['is_home_win'].mean():.3f}")
+print(f"after warm-up filter: {len(df)} games  "
+      f"home_win base rate={df[TARGET].mean():.3f}")
 
-# ============================================================================
-# Time-aware split
-# ============================================================================
 train = df[df["date"] < "2024-08-01"].reset_index(drop=True)
 valid = df[(df["date"] >= "2024-08-01") & (df["date"] < "2024-09-16")].reset_index(drop=True)
-test  = df[df["date"] >= "2024-09-16"].reset_index(drop=True)
-print(f"\nsplit: train={len(train)}  valid={len(valid)}  test={len(test)}")
-print(f"home_win  train={train['is_home_win'].mean():.3f}  "
-      f"valid={valid['is_home_win'].mean():.3f}  "
-      f"test={test['is_home_win'].mean():.3f}")
+test = df[df["date"] >= "2024-09-16"].reset_index(drop=True)
+trainval = pd.concat([train, valid], ignore_index=True)
+print(f"split: train={len(train)} valid={len(valid)} test={len(test)}")
+print(f"home_win  train={train[TARGET].mean():.3f}  "
+      f"valid={valid[TARGET].mean():.3f}  test={test[TARGET].mean():.3f}")
 
 # ============================================================================
 # Feature group catalogue
 # ============================================================================
-WEATHER_COLS = []  # placeholder; will populate when CWA-merged data exists
+STADIUM_CAT = ["stadium"]
+STADIUM_NUM = [c for c in ["is_indoor"] if c in df.columns]
+WEATHER_COLS = [c for c in ["temperature", "humidity", "wind_speed", "precip"]
+                if c in df.columns]
+TEAM_STRENGTH = [c for c in ["diff_elo", "diff_pythag", "diff_rest", "pf_pre"]
+                 if c in df.columns]
+BATTER_STATE = [c for c in ["diff_OPS_30g", "diff_HR_per_g_30g",
+                            "diff_K_pct_30g", "diff_BB_pct_30g",
+                            "diff_runs_per_g_30g", "diff_at_stadium_OPS"]
+                if c in df.columns]
+STADIUM_ALL = STADIUM_CAT + STADIUM_NUM
 
-STADIUM_COL = ["stadium"]
-BATTER_STATE_DIFF = [
-    "diff_OPS_30g", "diff_HR_per_g_30g", "diff_K_pct_30g",
-    "diff_BB_pct_30g", "diff_runs_per_g_30g", "diff_at_stadium_OPS",
-]
-TEAM_STRENGTH = ["diff_elo", "diff_pythag", "diff_rest", "pf_pre"]
-SPLIT_HOME_AWAY_OPS = ["home_OPS_30g", "away_OPS_30g"]   # for richer non-linear models
+if not WEATHER_COLS:
+    print("NOTE: no weather columns -> run scripts/step1b_fetch_weather.py "
+          "then step2 so m3/m6/m7 become meaningful. Continuing degraded.")
 
 FEATURE_GROUPS = {
-    "m1": [],                                   # intercept only -> handled specially
-    "m2": STADIUM_COL,                          # stadium only
-    "m3": WEATHER_COLS,                         # weather only (placeholder)
-    "m4": STADIUM_COL + WEATHER_COLS,           # stadium + weather
-    "m5": STADIUM_COL + TEAM_STRENGTH,          # stadium + team strength
-    "m6": STADIUM_COL + TEAM_STRENGTH + BATTER_STATE_DIFF,
-    "m7": STADIUM_COL + WEATHER_COLS + TEAM_STRENGTH + BATTER_STATE_DIFF,
+    "m1": [],
+    "m2": STADIUM_ALL,
+    "m3": WEATHER_COLS,
+    "m4": TEAM_STRENGTH,
+    "m5": BATTER_STATE,
+    "m6": STADIUM_ALL + WEATHER_COLS,
+    "m7": STADIUM_ALL + WEATHER_COLS + TEAM_STRENGTH + BATTER_STATE,
 }
 
-TARGET = "is_home_win"
 
-
-def build_preprocessor(numeric_cols, categorical_cols):
+def build_preprocessor(feats):
+    cat = [f for f in feats if f in STADIUM_CAT]
+    num = [f for f in feats if f not in cat]
     transformers = []
-    if numeric_cols:
+    if num:
         transformers.append(("num", Pipeline([
             ("imp", SimpleImputer(strategy="median")),
-            ("sc",  StandardScaler())
-        ]), numeric_cols))
-    if categorical_cols:
+            ("sc", StandardScaler())]), num))
+    if cat:
         transformers.append(("cat", Pipeline([
             ("imp", SimpleImputer(strategy="most_frequent")),
-            ("oh",  OneHotEncoder(handle_unknown="ignore", sparse_output=False))
-        ]), categorical_cols))
+            ("oh", OneHotEncoder(handle_unknown="ignore",
+                                 sparse_output=False))]), cat))
     return ColumnTransformer(transformers, remainder="drop")
 
 
-def evaluate(y_true, p_hat):
-    y_pred = (p_hat >= 0.5).astype(int)
+def evaluate(y_true, p_hat, thr=0.5):
+    y_true = np.asarray(y_true)
+    y_pred = (p_hat >= thr).astype(int)
     return {
-        "n": len(y_true),
+        "n": int(len(y_true)),
         "accuracy": accuracy_score(y_true, y_pred),
-        "auc": roc_auc_score(y_true, p_hat) if y_true.nunique() > 1 else float("nan"),
+        "bal_acc": balanced_accuracy_score(y_true, y_pred),
+        "f1": f1_score(y_true, y_pred, zero_division=0),
+        "auc": roc_auc_score(y_true, p_hat) if len(np.unique(y_true)) > 1 else float("nan"),
         "brier": brier_score_loss(y_true, p_hat),
         "log_loss": log_loss(y_true, p_hat, labels=[0, 1]),
     }
 
 
-# ============================================================================
-# Ablation m1..m7 with logistic regression
-# ============================================================================
-print("\n" + "=" * 70)
-print("ABLATION: m1..m7 (logistic regression)")
-print("=" * 70)
+def auc_bootstrap_ci(y_true, p_hat, n_boot=1000, seed=RNG):
+    y_true = np.asarray(y_true)
+    p_hat = np.asarray(p_hat)
+    rs = np.random.RandomState(seed)
+    n = len(y_true)
+    vals = []
+    for _ in range(n_boot):
+        idx = rs.randint(0, n, n)
+        if len(np.unique(y_true[idx])) < 2:
+            continue
+        vals.append(roc_auc_score(y_true[idx], p_hat[idx]))
+    if not vals:
+        return (float("nan"), float("nan"))
+    return (float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5)))
 
+
+# ============================================================================
+# 1. Ablation m1..m7 (algorithm fixed = logistic regression)
+# ============================================================================
+print("\n" + "=" * 70 + "\nABLATION m1..m7 (logistic; features vary)\n" + "=" * 70)
 ablation_rows = []
-trainval = pd.concat([train, valid], ignore_index=True)
-
 for mname, feats in FEATURE_GROUPS.items():
-    if mname == "m1":
-        # intercept-only baseline = mean of trainval target
-        p_const = trainval[TARGET].mean()
-        for split_name, split_df in [("train", train), ("valid", valid), ("test", test)]:
-            y = split_df[TARGET]
-            p = np.full(len(y), p_const)
-            metrics = evaluate(y, p)
-            metrics.update({"model": mname, "split": split_name})
-            ablation_rows.append(metrics)
-        continue
-
-    feats_used = [f for f in feats if f in df.columns]
-    cat = [f for f in feats_used if f in STADIUM_COL]
-    num = [f for f in feats_used if f not in cat]
-    if not feats_used:
-        # m3 with no weather data -> skip cleanly
-        for split_name, split_df in [("train", train), ("valid", valid), ("test", test)]:
-            y = split_df[TARGET]
+    feats = [f for f in feats if f in df.columns]
+    for split_name, sdf in [("train", train), ("valid", valid), ("test", test)]:
+        y = sdf[TARGET]
+        if mname == "m1" or not feats:
             p = np.full(len(y), trainval[TARGET].mean())
-            metrics = evaluate(y, p)
-            metrics.update({"model": mname, "split": split_name, "note": "no-weather-fallback"})
-            ablation_rows.append(metrics)
-        continue
-
-    pre = build_preprocessor(num, cat)
-    pipe = Pipeline([
-        ("pre", pre),
-        ("clf", LogisticRegression(max_iter=2000, C=1.0, solver="liblinear"))
-    ])
-    X_tv = trainval[feats_used]
-    y_tv = trainval[TARGET]
-    pipe.fit(X_tv, y_tv)
-
-    for split_name, split_df in [("train", train), ("valid", valid), ("test", test)]:
-        y = split_df[TARGET]
-        p = pipe.predict_proba(split_df[feats_used])[:, 1]
-        metrics = evaluate(y, p)
-        metrics.update({"model": mname, "split": split_name, "n_feats": len(feats_used)})
-        ablation_rows.append(metrics)
-
+            note = "intercept" if mname == "m1" else "no-features-fallback"
+        else:
+            pipe = Pipeline([("pre", build_preprocessor(feats)),
+                             ("clf", LogisticRegression(max_iter=2000, C=1.0,
+                                                        solver="liblinear"))])
+            pipe.fit(trainval[feats], trainval[TARGET])
+            p = pipe.predict_proba(sdf[feats])[:, 1]
+            note = f"{len(feats)}feat"
+        m = evaluate(y, p)
+        m.update({"model": mname, "split": split_name, "note": note})
+        ablation_rows.append(m)
 ablation = pd.DataFrame(ablation_rows)
 ablation.to_csv(EVAL / "results_ablation.csv", index=False)
-print(ablation[ablation["split"] == "test"].sort_values("auc", ascending=False).to_string(index=False))
-
+print(ablation[ablation.split == "test"]
+      .sort_values("auc", ascending=False)
+      [["model", "note", "n", "auc", "accuracy", "brier"]].to_string(index=False))
 
 # ============================================================================
-# Algorithm comparison on m7 full feature set
+# 2. Algorithm comparison @ full m7 (features fixed; algorithm varies)
 # ============================================================================
-print("\n" + "=" * 70)
-print("ALGORITHMS @ m7 full features (no weather in this sandbox run)")
-print("=" * 70)
+print("\n" + "=" * 70 + "\nALGORITHMS @ m7 full features\n" + "=" * 70)
+m7 = [f for f in FEATURE_GROUPS["m7"] if f in df.columns]
+Xtv, ytv = trainval[m7], trainval[TARGET]
+Xte, yte = test[m7], test[TARGET]
 
-m7_feats = [f for f in FEATURE_GROUPS["m7"] if f in df.columns]
-m7_cat = [f for f in m7_feats if f in STADIUM_COL]
-m7_num = [f for f in m7_feats if f not in m7_cat]
-
-X_train = trainval[m7_feats]
-y_train = trainval[TARGET]
-X_test  = test[m7_feats]
-y_test  = test[TARGET]
-
-models = {
+algos = {
     "logit": LogisticRegression(max_iter=2000, C=1.0, solver="liblinear"),
-    "glmnet_l2":   LogisticRegression(penalty="l2", C=0.3, max_iter=2000, solver="liblinear"),
-    "glmnet_elastic": LogisticRegression(penalty="elasticnet", C=0.5, l1_ratio=0.5,
-                                         max_iter=2000, solver="saga"),
-    "rf": RandomForestClassifier(n_estimators=400, max_depth=6, min_samples_leaf=5,
-                                 random_state=RNG, n_jobs=-1),
-    "xgb": xgb.XGBClassifier(
-        n_estimators=400, max_depth=3, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8,
-        reg_alpha=0.1, reg_lambda=1.0,
-        eval_metric="logloss", random_state=RNG, n_jobs=-1, tree_method="hist",
-    ),
-    "lgb": lgb.LGBMClassifier(
-        n_estimators=400, max_depth=-1, num_leaves=15, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8, min_child_samples=10,
-        reg_alpha=0.1, reg_lambda=1.0, random_state=RNG, n_jobs=-1, verbosity=-1,
-    ),
+    "glmnet_l2": LogisticRegression(penalty="l2", C=0.3, max_iter=2000,
+                                    solver="liblinear"),
+    "glmnet_elastic": LogisticRegression(penalty="elasticnet", C=0.5,
+                                          l1_ratio=0.5, max_iter=3000,
+                                          solver="saga"),
+    "rf": RandomForestClassifier(n_estimators=400, max_depth=6,
+                                 min_samples_leaf=5, random_state=RNG,
+                                 n_jobs=-1),
+    "xgb": xgb.XGBClassifier(n_estimators=400, max_depth=3, learning_rate=0.05,
+                             subsample=0.8, colsample_bytree=0.8,
+                             reg_alpha=0.1, reg_lambda=1.0,
+                             eval_metric="logloss", random_state=RNG,
+                             n_jobs=-1, tree_method="hist"),
+    "lgb": lgb.LGBMClassifier(n_estimators=400, num_leaves=15,
+                              learning_rate=0.05, subsample=0.8,
+                              colsample_bytree=0.8, min_child_samples=10,
+                              reg_alpha=0.1, reg_lambda=1.0,
+                              random_state=RNG, n_jobs=-1, verbosity=-1),
 }
-
 algo_rows = []
-for name, clf in models.items():
-    pre = build_preprocessor(m7_num, m7_cat)
-    pipe = Pipeline([("pre", pre), ("clf", clf)])
-    pipe.fit(X_train, y_train)
-    p = pipe.predict_proba(X_test)[:, 1]
-    metrics = evaluate(y_test, p)
-    metrics["model"] = name
-    algo_rows.append(metrics)
-    print(f"  {name:18s} auc={metrics['auc']:.3f}  acc={metrics['accuracy']:.3f}  brier={metrics['brier']:.3f}  ll={metrics['log_loss']:.3f}")
-
+for name, clf in algos.items():
+    pipe = Pipeline([("pre", build_preprocessor(m7)), ("clf", clf)])
+    pipe.fit(Xtv, ytv)
+    m = evaluate(yte, pipe.predict_proba(Xte)[:, 1])
+    m["model"] = name
+    algo_rows.append(m)
+    print(f"  {name:15s} auc={m['auc']:.3f} acc={m['accuracy']:.3f} "
+          f"brier={m['brier']:.3f} ll={m['log_loss']:.3f}")
 algo_df = pd.DataFrame(algo_rows).sort_values("auc", ascending=False)
 algo_df.to_csv(EVAL / "results_algos.csv", index=False)
 
-
 # ============================================================================
-# Tune top-2 algorithms with TimeSeriesSplit CV
+# 3. Tune candidates with TimeSeriesSplit; WINNER = best CV-AUC
 # ============================================================================
-print("\n" + "=" * 70)
-print("TUNING top-2 algorithms (TimeSeriesSplit n=5)")
-print("=" * 70)
-
+print("\n" + "=" * 70 + "\nTUNING (TimeSeriesSplit n=5; winner by CV-AUC)\n" + "=" * 70)
 tscv = TimeSeriesSplit(n_splits=5)
-
-# lean grids — sandbox-friendly. n_jobs=1 INSIDE each fit to avoid nested-
-# parallelism thrashing (4 outer workers × 4 inner threads = 16 on 4 cores).
-xgb_grid = {
-    "clf__n_estimators": [200, 400],
-    "clf__max_depth": [2, 3, 4],
-    "clf__learning_rate": [0.03, 0.05, 0.1],
+# n_jobs=1 INSIDE each estimator, n_jobs=4 on the search -> avoids the
+# 4x4=16-thread thrash that stalled an earlier run on a 4-core box.
+grids = {
+    "xgb": (Pipeline([("pre", build_preprocessor(m7)),
+                      ("clf", xgb.XGBClassifier(eval_metric="logloss",
+                                                random_state=RNG, n_jobs=1,
+                                                tree_method="hist",
+                                                reg_alpha=0.1, reg_lambda=1.0,
+                                                subsample=0.8,
+                                                colsample_bytree=0.8))]),
+            {"clf__n_estimators": [200, 400],
+             "clf__max_depth": [2, 3, 4],
+             "clf__learning_rate": [0.03, 0.05, 0.1]}),
+    "lgb": (Pipeline([("pre", build_preprocessor(m7)),
+                      ("clf", lgb.LGBMClassifier(subsample=0.8,
+                                                 colsample_bytree=0.8,
+                                                 min_child_samples=10,
+                                                 reg_alpha=0.1, reg_lambda=1.0,
+                                                 random_state=RNG, n_jobs=1,
+                                                 verbosity=-1))]),
+            {"clf__n_estimators": [200, 400],
+             "clf__num_leaves": [8, 15, 31],
+             "clf__learning_rate": [0.03, 0.05, 0.1]}),
+    "elastic": (Pipeline([("pre", build_preprocessor(m7)),
+                          ("clf", LogisticRegression(penalty="elasticnet",
+                                                     solver="saga",
+                                                     max_iter=5000,
+                                                     random_state=RNG))]),
+                {"clf__C": [0.1, 0.3, 1.0, 3.0],
+                 "clf__l1_ratio": [0.2, 0.5, 0.8]}),
+    "rf": (Pipeline([("pre", build_preprocessor(m7)),
+                     ("clf", RandomForestClassifier(random_state=RNG,
+                                                    n_jobs=1))]),
+           {"clf__n_estimators": [200, 400, 800],
+            "clf__max_depth": [4, 6, 8, None],
+            "clf__min_samples_leaf": [3, 5, 10]}),
 }
-xgb_pipe = Pipeline([
-    ("pre", build_preprocessor(m7_num, m7_cat)),
-    ("clf", xgb.XGBClassifier(
-        eval_metric="logloss", random_state=RNG, n_jobs=1,
-        tree_method="hist", reg_alpha=0.1, reg_lambda=1.0,
-        subsample=0.8, colsample_bytree=0.8,
-    )),
-])
-xgb_search = GridSearchCV(xgb_pipe, xgb_grid, cv=tscv, scoring="roc_auc", n_jobs=4)
-xgb_search.fit(X_train, y_train)
-print(f"  best xgb: AUC={xgb_search.best_score_:.3f}  params={xgb_search.best_params_}")
+searches, cv_auc = {}, {}
+for name, (pipe, grid) in grids.items():
+    gs = GridSearchCV(pipe, grid, cv=tscv, scoring="roc_auc", n_jobs=4)
+    gs.fit(Xtv, ytv)
+    searches[name] = gs
+    cv_auc[name] = gs.best_score_
+    print(f"  {name:8s} CV-AUC={gs.best_score_:.3f}  {gs.best_params_}")
 
-lgb_grid = {
-    "clf__n_estimators": [200, 400],
-    "clf__num_leaves": [8, 15, 31],
-    "clf__learning_rate": [0.03, 0.05, 0.1],
-}
-lgb_pipe = Pipeline([
-    ("pre", build_preprocessor(m7_num, m7_cat)),
-    ("clf", lgb.LGBMClassifier(
-        subsample=0.8, colsample_bytree=0.8, min_child_samples=10,
-        reg_alpha=0.1, reg_lambda=1.0,
-        random_state=RNG, n_jobs=1, verbosity=-1,
-    )),
-])
-lgb_search = GridSearchCV(lgb_pipe, lgb_grid, cv=tscv, scoring="roc_auc", n_jobs=4)
-lgb_search.fit(X_train, y_train)
-print(f"  best lgb: AUC={lgb_search.best_score_:.3f}  params={lgb_search.best_params_}")
-
-elastic_grid = {
-    "clf__C": [0.1, 0.3, 1.0, 3.0],
-    "clf__l1_ratio": [0.2, 0.5, 0.8],
-}
-elastic_pipe = Pipeline([
-    ("pre", build_preprocessor(m7_num, m7_cat)),
-    ("clf", LogisticRegression(penalty="elasticnet", solver="saga", max_iter=5000,
-                               random_state=RNG)),
-])
-elastic_search = GridSearchCV(elastic_pipe, elastic_grid, cv=tscv, scoring="roc_auc", n_jobs=4)
-elastic_search.fit(X_train, y_train)
-print(f"  best elastic: AUC={elastic_search.best_score_:.3f}  params={elastic_search.best_params_}")
-
-# Also tune RandomForest (best default-AUC algorithm)
-rf_grid = {
-    "clf__n_estimators": [200, 400, 800],
-    "clf__max_depth": [4, 6, 8, None],
-    "clf__min_samples_leaf": [3, 5, 10],
-}
-rf_pipe = Pipeline([
-    ("pre", build_preprocessor(m7_num, m7_cat)),
-    ("clf", RandomForestClassifier(random_state=RNG, n_jobs=1)),
-])
-rf_search = GridSearchCV(rf_pipe, rf_grid, cv=tscv, scoring="roc_auc", n_jobs=4)
-rf_search.fit(X_train, y_train)
-print(f"  best rf: AUC={rf_search.best_score_:.3f}  params={rf_search.best_params_}")
-
+winner_name = max(cv_auc, key=cv_auc.get)
+winner_search = searches[winner_name]
+winner_fitted = winner_search.best_estimator_          # fitted on trainval
+print(f"\nWINNER (by CV-AUC): {winner_name}  CV-AUC={cv_auc[winner_name]:.3f}")
 
 # ============================================================================
-# Final eval on holdout test set
+# 4. Honest holdout — every tuned candidate + bootstrap CI
 # ============================================================================
-print("\n" + "=" * 70)
-print("HOLDOUT TEST EVAL")
-print("=" * 70)
-
-candidates = {
-    "tuned_xgb":     xgb_search.best_estimator_,
-    "tuned_lgb":     lgb_search.best_estimator_,
-    "tuned_elastic": elastic_search.best_estimator_,
-    "tuned_rf":      rf_search.best_estimator_,
-}
-final_rows = []
-preds_for_calib = {}
-for name, est in candidates.items():
-    p = est.predict_proba(X_test)[:, 1]
-    metrics = evaluate(y_test, p)
-    metrics["model"] = name
-    final_rows.append(metrics)
-    preds_for_calib[name] = p
-    print(f"  {name:15s} auc={metrics['auc']:.3f}  acc={metrics['accuracy']:.3f}  "
-          f"brier={metrics['brier']:.3f}  log_loss={metrics['log_loss']:.3f}")
-
-final_df = pd.DataFrame(final_rows).sort_values("auc", ascending=False)
+print("\n" + "=" * 70 + "\nHOLDOUT (test) — point estimate + 95% bootstrap CI\n" + "=" * 70)
+final_rows, preds_for_calib = [], {}
+for name, gs in searches.items():
+    p = gs.best_estimator_.predict_proba(Xte)[:, 1]
+    m = evaluate(yte, p)
+    lo, hi = auc_bootstrap_ci(yte, p)
+    m.update({"model": f"tuned_{name}", "cv_auc": cv_auc[name],
+              "auc_ci_lo": lo, "auc_ci_hi": hi})
+    final_rows.append(m)
+    preds_for_calib[f"tuned_{name}"] = p
+    print(f"  tuned_{name:8s} holdout-AUC={m['auc']:.3f} "
+          f"[{lo:.3f}, {hi:.3f}]  CV-AUC={cv_auc[name]:.3f}")
+final_df = pd.DataFrame(final_rows).sort_values("cv_auc", ascending=False)
 final_df.to_csv(EVAL / "results_tuned.csv", index=False)
-best_name = final_df.iloc[0]["model"]
-best_est  = candidates[best_name]
-print(f"\nWINNER: {best_name}  AUC={final_df.iloc[0]['auc']:.3f}")
-
 
 # ============================================================================
-# Calibration (Platt + Isotonic) on the winner
+# 5. ONE calibration: isotonic via time-aware CV on train+valid
 # ============================================================================
-print("\n" + "=" * 70)
-print("CALIBRATION on winner")
-print("=" * 70)
-
-from sklearn.base import clone
-from sklearn.frozen import FrozenEstimator
-best_est_train = clone(best_est)
-best_est_train.fit(train[m7_feats], train[TARGET])
-cal_sigmoid = CalibratedClassifierCV(FrozenEstimator(best_est_train), method="sigmoid")
-cal_sigmoid.fit(valid[m7_feats], valid[TARGET])
-p_cal = cal_sigmoid.predict_proba(X_test)[:, 1]
-m_cal = evaluate(y_test, p_cal)
-print(f"  calibrated (sigmoid): auc={m_cal['auc']:.3f}  brier={m_cal['brier']:.3f}  ll={m_cal['log_loss']:.3f}")
+print("\n" + "=" * 70 + "\nCALIBRATION (isotonic, TimeSeriesSplit on train+valid)\n" + "=" * 70)
+cal = CalibratedClassifierCV(clone(winner_fitted), method="isotonic",
+                             cv=TimeSeriesSplit(n_splits=3))
+cal.fit(Xtv, ytv)
+p_raw = winner_fitted.predict_proba(Xte)[:, 1]
+p_cal = cal.predict_proba(Xte)[:, 1]
+m_raw = evaluate(yte, p_raw)
+m_cal = evaluate(yte, p_cal)
 preds_for_calib["winner_calibrated"] = p_cal
-
+print(f"  raw        auc={m_raw['auc']:.3f} brier={m_raw['brier']:.3f} ll={m_raw['log_loss']:.3f}")
+print(f"  calibrated auc={m_cal['auc']:.3f} brier={m_cal['brier']:.3f} ll={m_cal['log_loss']:.3f}")
+use_calibrated = m_cal["brier"] <= m_raw["brier"]
+print(f"  -> serving {'CALIBRATED' if use_calibrated else 'RAW'} "
+      f"(lower Brier wins on holdout)")
 
 # ============================================================================
-# Plots
+# 6. Threshold: leak-free trainval OOF (TimeSeriesSplit) -> Youden's J
+#    Report holdout @0.5 AND @tuned side-by-side (do NOT silently replace).
 # ============================================================================
-print("\n" + "=" * 70)
-print("PLOTS")
-print("=" * 70)
+oof = cross_val_predict(clone(winner_fitted), Xtv, ytv, cv=tscv,
+                        method="predict_proba", n_jobs=4)[:, 1]
+y_oof = ytv.values
+pos, neg = y_oof == 1, y_oof == 0
+n_pos, n_neg = max(pos.sum(), 1), max(neg.sum(), 1)
 
+
+def youden_j(t):
+    pred = oof >= t
+    tpr = (pred & pos).sum() / n_pos
+    fpr = (pred & neg).sum() / n_neg
+    return tpr - fpr
+
+
+ths = np.linspace(0.30, 0.70, 41)
+thr_opt = float(ths[int(np.argmax([youden_j(t) for t in ths]))])
+serve = p_cal if use_calibrated else p_raw
+m_05 = evaluate(yte, serve, thr=0.5)
+m_opt = evaluate(yte, serve, thr=thr_opt)
+print("\n" + "=" * 70 + "\nDUAL-THRESHOLD HOLDOUT (winner served)\n" + "=" * 70)
+print(f"  thr=0.50      acc={m_05['accuracy']:.3f} bal_acc={m_05['bal_acc']:.3f} f1={m_05['f1']:.3f}")
+print(f"  thr={thr_opt:.2f}(OOF-J) acc={m_opt['accuracy']:.3f} bal_acc={m_opt['bal_acc']:.3f} f1={m_opt['f1']:.3f}")
+
+# ============================================================================
+# 7. Plots
+# ============================================================================
+print("\n" + "=" * 70 + "\nPLOTS\n" + "=" * 70)
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
 
-# 1. AUC bar comparison
-fig, ax = plt.subplots(figsize=(9, 5))
 allres = pd.concat([
-    algo_df.assign(family="default"),
-    final_df.assign(family="tuned"),
-], ignore_index=True)
-allres = allres.sort_values("auc", ascending=True)
+    algo_df.assign(family="default")[["model", "auc", "family"]],
+    final_df.assign(family="tuned")[["model", "auc", "family"]],
+], ignore_index=True).sort_values("auc")
+fig, ax = plt.subplots(figsize=(9, 5))
 ax.barh(allres["model"] + " (" + allres["family"] + ")", allres["auc"])
-ax.axvline(0.5, color="gray", linestyle="--", label="random")
-ax.axvline(train[TARGET].mean(), color="red", linestyle=":", label=f"HFA prior={train[TARGET].mean():.3f}")
+ax.axvline(0.5, color="gray", ls="--", label="random")
+ax.axvline(train[TARGET].mean(), color="red", ls=":",
+           label=f"HFA prior={train[TARGET].mean():.3f}")
 ax.set_xlabel("AUC (holdout test)")
-ax.set_title("Algorithm comparison — CPBL 2024 home-win prediction")
+ax.set_title("CPBL 2024 home-win — algorithm comparison")
 ax.legend(loc="lower right")
 fig.tight_layout()
 fig.savefig(FIG / "model_comparison.png", dpi=120)
 plt.close(fig)
 
-# 2. Calibration curve
 fig, ax = plt.subplots(figsize=(7, 6))
 for name, p in preds_for_calib.items():
-    frac_pos, mean_pred = calibration_curve(y_test, p, n_bins=8, strategy="quantile")
-    ax.plot(mean_pred, frac_pos, marker="o", label=name)
+    fp, mp = calibration_curve(yte, p, n_bins=8, strategy="quantile")
+    ax.plot(mp, fp, marker="o", label=name)
 ax.plot([0, 1], [0, 1], "k--", alpha=0.5, label="perfect")
 ax.set_xlabel("Predicted probability")
 ax.set_ylabel("Observed home-win frequency")
-ax.set_title("Calibration curve (holdout test)")
+ax.set_title("Calibration (holdout test)")
 ax.legend(loc="best", fontsize=8)
 fig.tight_layout()
 fig.savefig(FIG / "calibration.png", dpi=120)
 plt.close(fig)
 
-# 3. SHAP summary — supports any tree ensemble (RF, XGB, LGB)
 try:
     import shap
-    clf_in_pipe = best_est.named_steps["clf"]
-    pre_in_pipe = best_est.named_steps["pre"]
-    X_test_trans = pre_in_pipe.transform(X_test)
-    feat_names = pre_in_pipe.get_feature_names_out()
-    is_tree = isinstance(clf_in_pipe,
-                          (xgb.XGBClassifier, lgb.LGBMClassifier, RandomForestClassifier))
-    if is_tree:
-        # Rename CJK stadium tokens to ASCII for plot legibility
-        STAD_ASCII = {
-            "樂天桃園": "Taoyuan", "洲際": "Taichung", "天母": "Tianmu",
-            "新莊": "Xinzhuang", "澄清湖": "Chengqing", "臺南": "Tainan",
-            "大巨蛋": "Dome", "其他": "Other",
-        }
-        feat_names = list(feat_names)
-        for i, n in enumerate(feat_names):
-            for cjk, eng in STAD_ASCII.items():
-                n = n.replace(cjk, eng)
-            n = n.replace("num__", "").replace("cat__", "")
-            feat_names[i] = n
-        explainer = shap.TreeExplainer(clf_in_pipe)
-        sv = explainer.shap_values(X_test_trans)
+    clf = winner_fitted.named_steps["clf"]
+    pre = winner_fitted.named_steps["pre"]
+    Xtt = pre.transform(Xte)
+    names = list(pre.get_feature_names_out())
+    STAD_ASCII = {"樂天桃園": "Taoyuan", "洲際": "Taichung", "天母": "Tianmu",
+                  "新莊": "Xinzhuang", "澄清湖": "Chengqing", "臺南": "Tainan",
+                  "大巨蛋": "Dome", "其他": "Other"}
+    for i, n in enumerate(names):
+        for cjk, eng in STAD_ASCII.items():
+            n = n.replace(cjk, eng)
+        names[i] = n.replace("num__", "").replace("cat__", "")
+    if isinstance(clf, (xgb.XGBClassifier, lgb.LGBMClassifier,
+                        RandomForestClassifier)):
+        sv = shap.TreeExplainer(clf).shap_values(Xtt)
         if isinstance(sv, list):
-            sv_pos = sv[1]
+            sv = sv[1]
         elif hasattr(sv, "ndim") and sv.ndim == 3:
-            sv_pos = sv[:, :, 1]
-        else:
-            sv_pos = sv
-        shap.summary_plot(sv_pos, X_test_trans, feature_names=feat_names,
-                          show=False, max_display=15)
+            sv = sv[:, :, 1]
+        shap.summary_plot(sv, Xtt, feature_names=names, show=False,
+                          max_display=15)
         plt.tight_layout()
         plt.savefig(FIG / "shap_summary.png", dpi=120, bbox_inches="tight")
         plt.close()
-        print(f"  SHAP summary saved for {type(clf_in_pipe).__name__}")
-except Exception as e:
+        print(f"  SHAP saved ({type(clf).__name__})")
+    else:
+        print(f"  SHAP skipped (linear winner {type(clf).__name__})")
+except Exception as e:                                   # noqa: BLE001
     print(f"  SHAP skipped: {type(e).__name__}: {e}")
 
 # ============================================================================
-# Save final metrics JSON
+# 8. Shiny artifacts — precompute contract (decided up-front, not in step6)
+#    R Shiny just RENDERS these; no reticulate, deploy-safe.
 # ============================================================================
-final_metrics = {
-    "n_train": len(train), "n_valid": len(valid), "n_test": len(test),
-    "home_win_base_rate_train": float(train[TARGET].mean()),
-    "winner": best_name,
-    "winner_holdout": final_df.iloc[0].to_dict(),
-    "calibrated_holdout": m_cal,
-    "best_params": {
-        "xgb": xgb_search.best_params_,
-        "lgb": lgb_search.best_params_,
-        "elastic": elastic_search.best_params_,
-        "rf": rf_search.best_params_,
-    },
+print("\n" + "=" * 70 + "\nSHINY ARTIFACTS\n" + "=" * 70)
+
+# 8a. leak-free per-game OOF probabilities for the WHOLE post-warmup season
+#     (each game scored by a model fit only on chronologically earlier games)
+if use_calibrated:
+    oof_est = CalibratedClassifierCV(clone(winner_fitted), method="isotonic",
+                                     cv=TimeSeriesSplit(3))
+else:
+    oof_est = clone(winner_fitted)
+oof_all = cross_val_predict(oof_est, df[m7], df[TARGET], cv=tscv,
+                            method="predict_proba", n_jobs=4)[:, 1]
+pred_cols = ["game_id", "date", "stadium", "home_team", "away_team"]
+predictions = df[pred_cols].copy()
+predictions["y_true"] = df[TARGET].values
+predictions["p_home_win"] = oof_all
+predictions["pred_at_0.5"] = (oof_all >= 0.5).astype(int)
+predictions[f"pred_at_{thr_opt:.2f}"] = (oof_all >= thr_opt).astype(int)
+predictions["is_holdout"] = (df["date"] >= "2024-09-16").astype(int)
+predictions.to_csv(EVAL / "predictions.csv", index=False)
+oof_auc = roc_auc_score(df[TARGET], oof_all)
+print(f"  predictions.csv  rows={len(predictions)}  season-OOF-AUC={oof_auc:.3f}")
+
+# 8b. production model: serve trained on ALL post-warmup data
+prod = CalibratedClassifierCV(clone(winner_fitted), method="isotonic",
+                              cv=TimeSeriesSplit(3)) if use_calibrated \
+    else clone(winner_fitted)
+prod.fit(df[m7], df[TARGET])
+joblib.dump({"model": prod, "features": m7,
+             "categorical": STADIUM_CAT,
+             "numeric": [c for c in m7 if c not in STADIUM_CAT],
+             "threshold": thr_opt, "winner": winner_name},
+            MODELS / "best_model.joblib")
+print(f"  best_model.joblib  ({winner_name}, "
+      f"{'isotonic-calibrated' if use_calibrated else 'raw'})")
+
+# 8c. Shiny input contract
+schema = {
+    "winner": winner_name,
+    "calibrated": bool(use_calibrated),
+    "winner_params": winner_search.best_params_,
+    "threshold_opt": thr_opt,
+    "home_win_base_rate": float(trainval[TARGET].mean()),
+    "n": {"train": len(train), "valid": len(valid), "test": len(test),
+          "post_warmup": len(df)},
+    "feature_groups": {
+        "stadium": STADIUM_ALL, "weather": WEATHER_COLS,
+        "team_strength": TEAM_STRENGTH, "batter_state": BATTER_STATE},
+    "model_features": m7,
+    "categorical_features": STADIUM_CAT,
+    "stadium_levels": sorted(df["stadium"].dropna().unique().tolist()),
+    "metrics": {
+        "cv_auc": cv_auc, "season_oof_auc": float(oof_auc),
+        "holdout_auc": float(m_raw["auc"]),
+        "holdout_auc_ci95": auc_bootstrap_ci(yte, p_raw),
+        "holdout_brier_raw": float(m_raw["brier"]),
+        "holdout_brier_cal": float(m_cal["brier"])},
 }
-(EVAL / "_final_metrics.json").write_text(
-    json.dumps(final_metrics, indent=2, default=str), encoding="utf-8"
-)
-print(f"\nfinal_metrics: {EVAL / '_final_metrics.json'}")
-print("DONE.")
+(EVAL / "feature_schema.json").write_text(
+    json.dumps(schema, indent=2, ensure_ascii=False, default=str),
+    encoding="utf-8")
+print(f"  feature_schema.json  ({len(m7)} features, "
+      f"{len(schema['stadium_levels'])} stadium levels)")
+
+# ============================================================================
+# 9. Final metrics JSON
+# ============================================================================
+(EVAL / "_final_metrics.json").write_text(json.dumps({
+    "winner": winner_name,
+    "served": "calibrated" if use_calibrated else "raw",
+    "cv_auc": cv_auc,
+    "holdout_raw": m_raw, "holdout_calibrated": m_cal,
+    "holdout_auc_ci95": auc_bootstrap_ci(yte, p_raw),
+    "threshold_opt": thr_opt,
+    "holdout_at_0.5": m_05, "holdout_at_opt": m_opt,
+    "season_oof_auc": float(oof_auc),
+    "best_params": {k: v.best_params_ for k, v in searches.items()},
+}, indent=2, default=str), encoding="utf-8")
+print(f"\nfinal_metrics: {EVAL / '_final_metrics.json'}\nDONE.")

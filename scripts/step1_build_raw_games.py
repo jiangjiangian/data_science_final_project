@@ -2,11 +2,14 @@
 scripts/step1_build_raw_games.py
 
 Step 1.2-1.3:
-  - Load rebas v0.1.0-2024 three OpenData JSONs (regular + challenge + series)
+  - Auto-discover EVERY rebas OpenData JSON under data/raw/ (any season).
+    Drop in v0.1.0-2023.0 / v0.1.0-2023.1 / v0.1.0-2024 zips and this script
+    picks them all up with no code change -> bigger N is the #1 accuracy
+    lever (rebas has 2023.0 + 2023.1 + 2024; NO 2022 release exists).
   - Re-aggregate batterBox SEPARATELY for home and away (fixes the
     home+away combined bug found in cde52470 cleaned CSV)
-  - Add game_type flag (regular / challenge / series)
-  - Stadium normalize 11 -> 8 (group minor venues)
+  - Tag game_type (regular / challenge / series) from filename
+  - Stadium normalize -> grouped levels (minor venues -> 其他)
   - Output canonical raw_games.csv
 
 Usage:  python3 scripts/step1_build_raw_games.py
@@ -20,17 +23,43 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW = ROOT / "data/raw/rebas_v0.1.0-2024"
+RAW_ROOT = ROOT / "data/raw"
 OUT = ROOT / "data/processed"
 OUT.mkdir(parents=True, exist_ok=True)
 PROV = ROOT / "data/raw/_provenance"
 PROV.mkdir(parents=True, exist_ok=True)
 
-SOURCES = [
-    ("regular",   RAW / "CPBL-2024-OpenData/CPBL-2024-OpenData.json"),
-    ("challenge", RAW / "CPBL-2024-Challenge-OpenData/CPBL-2024-Challenge-OpenData.json"),
-    ("series",    RAW / "CPBL-2024-TaiwanSeries-OpenData/CPBL-2024-TaiwanSeries-OpenData.json"),
-]
+
+def discover_sources(raw_root: Path):
+    """Find every CPBL-*OpenData*.json under data/raw/ and tag its game_type
+    and season from the filename. Returns list[(game_type, season, path)]
+    sorted by (season, type-rank) so the time-ordered build is stable."""
+    type_rank = {"regular": 0, "challenge": 1, "series": 2}
+    found = []
+    for p in sorted(raw_root.rglob("CPBL-*OpenData*.json")):
+        name = p.name
+        if "Challenge" in name:
+            gtype = "challenge"
+        elif "TaiwanSeries" in name or "Series" in name:
+            gtype = "series"
+        else:
+            gtype = "regular"
+        m = re.search(r"CPBL-(\d{4})", name)
+        season = int(m.group(1)) if m else 0
+        found.append((gtype, season, p))
+    found.sort(key=lambda t: (t[1], type_rank.get(t[0], 9)))
+    return found
+
+
+SOURCES = [(g, p) for (g, _s, p) in discover_sources(RAW_ROOT)]
+if not SOURCES:
+    raise FileNotFoundError(
+        f"No CPBL-*OpenData*.json found under {RAW_ROOT}. "
+        "Unzip rebas releases into data/raw/ first."
+    )
+print("discovered sources:")
+for g, p in SOURCES:
+    print(f"  [{g:9s}] {p.relative_to(ROOT)}")
 
 # 11 stadiums in source -> 8 normalized levels.
 # Bill-James park factor needs N>=20 ideally; the bottom 4 venues all have

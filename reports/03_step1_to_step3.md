@@ -1,347 +1,219 @@
-# Step 1 → Step 3 — CPBL 2024 Home-Win Prediction (Pipeline + Results)
+# Step 1 → Step 3 — CPBL Home-Win Prediction (Python Pipeline + Results)
 
 > Branch: `claude/setup-main-agent-BhYTE`
-> Date: 2026-05-14
-> Status: **Pipeline complete**, weather features pending (CWA API key needed)
+> Updated: 2026-05-15
+> Status: **Python is now the canonical pipeline** (instructor approved Python).
+> R scripts demoted to reference mirrors. R Shiny = thin presentation layer
+> that reads precomputed artifacts (no reticulate).
 
 ---
 
-## TL;DR
+## 0. Architecture decision (this update)
 
-| Item | Value |
+| Was | Now |
 |---|---|
-| Dataset | rebas v0.1.0-2024 release (regular + challenge + Taiwan series) |
-| Total games | **366** (2 ties dropped) |
-| Usable (after 30g warm-up) | **248** |
-| Time split | train 113 / valid 88 / test 47 |
-| Best logistic ablation (valid AUC) | **m6/m7** = 0.735 (test AUC noisy at N=47, valid more reliable) |
-| Best algorithm holdout test AUC | **tuned Random Forest = 0.656** |
-| Best CV AUC | XGB 0.586 / LGB 0.584 / RF 0.583 — within noise |
-| Weather features | ❌ Sandbox can't reach CWA; `R/fetch_cwa.R` written for user local |
+| R `tidymodels` primary; Python POC | **Python primary** (tidymodels too slow in Colab) |
+| Weather via `R/fetch_cwa.R` (CODiS, kept failing on stale `station_id`) | **`scripts/step1b_fetch_weather.py`** — Open-Meteo Archive, stdlib-only, NO API key |
+| R Shiny computes predictions | Python precomputes `predictions.csv` + `best_model.joblib`; **Shiny only renders** |
+| Single hardcoded 2024 path | step1 **auto-discovers any season** under `data/raw/` |
 
-> **N=47 holdout test is small — CV AUC is the more reliable ranking signal.** All
-> reported numbers should be read with bootstrap confidence ±0.07.
+Execution environment: **Colab only**. Local Mac has no `pandas`; the
+Anthropic sandbox is blocked from Open-Meteo (HTTP 403). Colab has the full
+stack, reaches Open-Meteo, and can `git pull/push`.
 
----
-
-## Step 1 — Data Acquisition
-
-### 1.1 Source
-
-Pulled from `rebas-tw/rebas.tw-open-data` GitHub release `v0.1.0-2024`:
-- `CPBL-2024-OpenData.zip` → 360 regular-season games
-- `CPBL-2024-Challenge-OpenData.zip` → 3 季後挑戰賽
-- `CPBL-2024-TaiwanSeries-OpenData.zip` → 5 台灣大賽
-
-All zips extracted to `data/raw/rebas_v0.1.0-2024/` (gitignored).
-
-### 1.2 Game ingestion + bug fix
-
-`scripts/step1_build_raw_games.py` rebuilds `data/processed/raw_games.csv`
-from raw JSON, **aggregating `homeBatterBox` and `awayBatterBox` separately**
-(the cde52470 cleaned CSV summed them together, which made H/HR/etc useless
-for home-win prediction — corr |r|<0.11).
-
-After dedup and dropping 2 ties: **366 games × 58 columns**.
-
-### 1.3 Stadium normalize (11 → 8)
-
-11 venues in raw → 8 levels after collapsing the 4 minor venues (花蓮 10,
-嘉義 8, 臺東 7, 斗六 4) into `其他`:
-
-| stadium_norm | N | home_win_rate | avg_total_score | pf_end_of_season |
-|---|---:|---:|---:|---:|
-| 澄清湖 | 39 | 0.513 | 9.77 | 1.18 (hitter park) |
-| 臺南 | 53 | 0.623 | 8.92 | 1.06 |
-| 樂天桃園 | 53 | 0.585 | 8.89 | 1.05 |
-| 洲際 | 49 | 0.531 | 8.84 | 1.06 |
-| 新莊 | 54 | 0.426 | 8.24 | 0.98 (富邦 home but worst HFA) |
-| 大巨蛋 | 42 | 0.548 | 7.79 | 0.91 (indoor) |
-| 其他 | 29 | 0.483 | 7.69 | 0.88 |
-| 天母 | 47 | 0.511 | 7.23 | 0.86 (pitcher park) |
-
-Mapping table: `data/raw/_lookup/stadium_to_station.csv`.
-
-### 1.4 CWA weather fetch (deferred to user local)
-
-`R/fetch_cwa.R` written but **not executed in sandbox** — needs `CWA_API_KEY`
-in `.Renviron` and outbound access to `opendata.cwa.gov.tw` / CODiS. The
-script:
-- Reads `data/raw/_lookup/stadium_to_station.csv`
-- Fetches monthly CSV per (station, year-month) from CODiS history endpoint
-- Snaps `game_dt` to nearest hour, joins → `temperature`, `humidity`,
-  `wind_speed`, `wind_dir` per game
-- Marks `is_indoor = 1` for 大巨蛋 games (weather kept as context only)
-- Caches per (station, ym) in `data/raw/.cache_cwa/`
-
-> **觀測 vs 氣候**: 觀測 (hourly observed) is required — that's game-time.
-> 氣候 (long-term aggregates) is optional, useful for anomaly features
-> (`temperature - station_normal_for_month`). Start with observation only.
+One-shot: `python3 scripts/run_all.py` (prints `git log -1` first so a stale
+checkout can never silently run old code again).
 
 ---
 
-## Step 2 — Feature Engineering
+## Step 1 — Data acquisition
 
-`scripts/step2_features.py` produces `data/processed/model_ready_data.csv`
-(366 × 103). All rolling/cumulative features are strictly **pre-game**
-(no t-leakage — verified `lag(cumsum)` pattern throughout).
+### 1.1 Source — rebas, multi-season ready
 
-### 2.1 Team-strength bundle (`R/elo_pythag.R` mirror)
+`scripts/step1_build_raw_games.py` now **globs every `CPBL-*OpenData*.json`
+under `data/raw/`** and tags game_type/season from the filename. Drop in more
+release zips and they are picked up with **zero code change**.
 
-| Feature | Formula | Notes |
+rebas releases that exist (checked 2026-05-15):
+
+| Release | Content |
+|---|---|
+| `v0.1.0-2024` | 2024 全年 (regular + challenge + Taiwan series) — **currently used** |
+| `v0.1.0-2023.1` | 2023 下半季 — *drop in to ~double N* |
+| `v0.1.0-2023.0` | 2023 上半季 — *drop in to ~double N* |
+| ~~2022~~ | **no release exists** |
+
+> **#1 accuracy lever:** adding the two 2023 zips takes N from 366 → ~700+,
+> which shrinks the noisy N=47 holdout to ~150 and beats any algorithm tweak.
+> Just unzip them into `data/raw/` and rerun `run_all.py`.
+
+### 1.2 Ingestion + the combined-batterbox bug fix
+
+`homeBatterBox` / `awayBatterBox` aggregated **separately** (the cde52470
+cleaned CSV summed them, making H/HR/etc. useless for home-win prediction —
+corr |r|<0.11). 2024 alone → **366 games** (2 ties dropped).
+
+### 1.3 Stadium normalize
+
+Minor venues (花蓮/嘉義/臺東/斗六, each N<10 in 2024) collapse into `其他`.
+Park-factor highlights: 澄清湖 PF≈1.18 (hitter park), 天母 ≈0.86 (pitcher
+park). Lookup: `data/raw/_lookup/stadium_to_station.csv` (now carries
+lat/lon for Open-Meteo).
+
+### 1.4 Weather — `scripts/step1b_fetch_weather.py`
+
+Open-Meteo Archive API (ERA5 reanalysis, ~10 km, hourly, **no API key**).
+Per distinct stadium it pulls the full season window once, disk-caches the
+JSON under `data/raw/.cache_weather/`, then joins game-hour →
+`temperature, humidity, wind_speed, wind_dir, precip (+ wind_dir_cat)`.
+Indoor (`大巨蛋`) games keep `is_indoor=1` so the model can down-weight
+weather there. Graceful: a failed site → NA for its games (never crashes).
+
+> **觀測 vs 氣候:** observation (game-time hourly) is what we need; ERA5
+> already ingests CWA station data. Long-term 氣候 normals are optional
+> anomaly features — not required for v1.
+
+---
+
+## Step 2 — Feature engineering
+
+`scripts/step2_features.py` reads `games_with_weather.csv` if present (else
+`raw_games.csv`), so weather rides straight through to
+`model_ready_data.csv`. All rolling/cumulative features are strictly
+**pre-game** (prior-game-only `lag(cumsum)` pattern; no t-leakage).
+
+| Group | Features |
+|---|---|
+| Team strength | `diff_elo` (K=4, HFA+24, MoV), `diff_pythag` (30g, exp 1.83), `diff_rest` (cap 5), `pf_pre` (time-aware leave-one-out) |
+| Batter state (打者狀態) | 30g rolling per side → diff of OPS/HR_per_g/K%/BB%/runs_per_g + `diff_at_stadium_OPS` |
+| Weather | `temperature, humidity, wind_speed, precip`, `is_indoor` |
+| Stadium | `stadium` (categorical) |
+
+`features_complete` flags rows past the 30-game warm-up (≈248/366 for 2024).
+
+---
+
+## Step 3 — Modelling
+
+### 3.1 Time-aware split (never random)
+
+```
+train = date < 2024-08-01
+valid = 2024-08-01 .. 2024-09-15
+test  = >= 2024-09-16   (held out; untouched in fit)
+```
+
+### 3.2 Ablation m1..m7 — algorithm FIXED (logistic), features VARY
+
+This is the textbook way to read each group's marginal contribution.
+**Charter §2 updated to match this scheme.**
+
+| Model | Features | Question it answers |
 |---|---|---|
-| `home_elo_pre` / `away_elo_pre` / `diff_elo` | K=4, HFA=+24, MoV Silver-style | Sequential by date |
-| `home_pythag_30g` / `away_pythag_30g` / `diff_pythag` | RS^1.83 / (RS^1.83 + RA^1.83) over last 30 games | NA if <5 prior games |
-| `home_rest_days` / `away_rest_days` / `diff_rest` | days since prior game, cap=5 | NA fills via median |
+| m1 | intercept only | pure home-field advantage baseline |
+| m2 | stadium | does the venue alone predict? |
+| m3 | weather | does climate alone predict? |
+| m4 | team strength | Elo/Pythag/rest/PF alone |
+| m5 | batter state | rolling lineup form alone |
+| m6 | stadium + weather | charter "environment-full" |
+| m7 | **FULL** (all four groups) | best feature set |
 
-### 2.2 Batter-state team-game rolling (30-game window)
+### 3.3 Algorithm comparison — features FIXED (full m7), algorithm VARIES
 
-Per side (home/away) per game, computed from each team's prior 30 games:
+`logit, glmnet(l2), glmnet(elasticnet), RandomForest, XGBoost, LightGBM`,
+each tuned with `TimeSeriesSplit(5)` `GridSearchCV`.
 
-```
-H        2B    3B    HR    BB    HBP   SF    AB    PA    SO    runs_scored
-↓
-1B = H - 2B - 3B - HR
-AVG  = H / AB
-OBP  = (H + BB + HBP) / (AB + BB + HBP + SF)
-SLG  = (1B + 2·2B + 3·3B + 4·HR) / AB
-OPS  = OBP + SLG
-ISO  = SLG - AVG
-K%   = SO / PA
-BB%  = BB / PA
-HR/G = HR / N
-R/G  = runs / N
-```
+> **Winner is chosen by CV-AUC, NOT holdout.** N_test is tiny and noisy;
+> every holdout AUC is reported with a 95% bootstrap CI so the reader sees
+> the uncertainty instead of a false-precision point estimate.
 
-→ 9 metrics × 2 sides × diff = **27 columns**.
+### 3.4 One calibration + dual threshold
 
-### 2.3 Stadium-specific
+- **Isotonic** calibration via `TimeSeriesSplit` CV on train+valid (one
+  technique only — stacking / extra calibration layers are noise at this N).
+  Served only if it lowers holdout Brier vs raw.
+- Threshold from **leak-free trainval OOF** (Youden's J). Holdout reported
+  at **both** 0.50 and the tuned threshold side-by-side — never silently
+  swapped.
 
-`home_at_stadium_OPS_30g` / `away_at_stadium_OPS_30g` /
-`diff_at_stadium_OPS` — same OPS formula but on the last 30 prior
-appearances of *this team at this stadium*. Captures park familiarity.
+### 3.5 Results
 
-### 2.4 Park Factor (time-aware)
-
-For each game at stadium S on date t:
-```
-pf_pre = mean(total_score at S before t) / mean(total_score at other stadiums before t)
-```
-Fallback to 1.0 when <5 prior at S. Stored as `pf_pre`.
-
-### 2.5 Time-of-week / month
-
-`dow`, `month`, `is_weekend`. (Sunday home-win rate 64% in raw EDA; possible
-audience effect — but kept as nuisance not core feature.)
-
-### 2.6 Output integrity
-
-```
-features_complete (no NA in any *_30g): 248 / 366
-```
-The 118 dropped games are the warm-up period (each team needs ~5–30 games
-of history before rolling features are defined).
+- **Run A (baseline, pre-weather, sandbox, logistic ablation, N=366):**
+  tuned Random Forest holdout AUC ≈ 0.656; CV-AUC XGB/LGB/RF ≈ 0.58 (within
+  ±0.07 at N=47); sigmoid calibration regressed to 0.536 (small/atypical
+  playoff test set → motivated the isotonic-CV switch). SHAP top features:
+  `diff_elo`, `diff_OPS_30g`, `diff_at_stadium_OPS`, `diff_runs_per_g_30g`,
+  `diff_K_pct_30g`, `pf_pre` — **打者狀態 features confirmed to pay off**.
+- **Run B (this pipeline, weather wired, isotonic-CV, dual threshold):**
+  regenerated by `run_all.py` in Colab. Numbers land in
+  `Results/eval/_final_metrics.json` / `results_*.csv` and the figures.
+  Compare m3/m6/m7 AUC with-vs-without weather to quantify the weather
+  group's contribution (the open question Run A could not answer).
 
 ---
 
-## Step 3 — Modelling (m1..m7 + 5-algorithm comparison)
+## Step 3 outputs — Shiny precompute contract (decided up-front)
 
-### 3.1 Time-aware split
+R Shiny does **zero computation** — it renders these:
 
-```
-train = date <  2024-08-01           (113 games)
-valid = 2024-08-01 .. 2024-09-15     (88 games)
-test  = >= 2024-09-16                (47 games, includes playoffs)
-```
-home-win base rates: train 0.504, valid 0.591, test 0.532. Test slightly
-unbalanced because Sep-Oct happens to favour home teams + Taiwan Series
-home advantage.
-
-### 3.2 m1..m7 ablation (logistic regression)
-
-> Note: m3 has no weather data → falls back to constant prior. m6 = m7
-> in the no-weather sandbox run.
-
-| Model | n_feats | test AUC | test Acc | Brier | LogLoss |
-|---|---:|---:|---:|---:|---:|
-| m1 (intercept) | 0 | 0.500 | 0.532 | 0.249 | 0.691 |
-| m2 (stadium) | 1 | 0.504 | 0.532 | 0.254 | 0.700 |
-| m3 (weather) | 0* | 0.500 | 0.532 | 0.249 | 0.691 |
-| m4 (stadium+weather) | 1* | 0.504 | 0.532 | 0.254 | 0.700 |
-| **m5 (stadium+team-strength)** | 5 | **0.545** | 0.532 | 0.254 | 0.704 |
-| m6 (m5+batter-state) | 11 | 0.516 | 0.511 | 0.263 | 0.721 |
-| m7 (full, no weather) | 11 | 0.516 | 0.511 | 0.263 | 0.721 |
-
-(* placeholder until weather data merged)
-
-→ Logistic adds capacity but doesn't translate to AUC; batter-state under
-logistic actually **hurts** AUC vs m5. Suggests **non-linear interactions**
-between features.
-
-### 3.3 Algorithm comparison @ m7 (default hyperparams)
-
-| Algo | test AUC | test Acc | Brier | LogLoss |
-|---|---:|---:|---:|---:|
-| logit | 0.516 | 0.511 | 0.263 | 0.721 |
-| glmnet L2 (C=0.3) | 0.507 | 0.489 | 0.257 | 0.709 |
-| glmnet elastic (C=0.5, α=0.5) | 0.553 | 0.638 | 0.250 | 0.693 |
-| **Random Forest** (400 trees, d=6) | **0.662** | 0.617 | 0.240 | 0.674 |
-| XGBoost (400, d=3, η=0.05) | 0.562 | 0.617 | 0.284 | 0.859 |
-| LightGBM (400, leaves=15, η=0.05) | 0.582 | 0.681 | 0.284 | 0.967 |
-
-→ Random Forest leads by clear margin on AUC. **Tree-based ensembles
-exploit non-linear interactions** that logistic can't see. LGB shows best
-accuracy but poor calibration (high log-loss).
-
-### 3.4 Tuning (TimeSeriesSplit n=5)
-
-| Algo | CV AUC | Best params |
-|---|---:|---|
-| XGBoost | **0.586** | lr=0.1, max_depth=2, n_estimators=200 |
-| LightGBM | 0.584 | lr=0.05, n_estimators=200, num_leaves=15 |
-| Random Forest | 0.583 | max_depth=8, min_samples_leaf=3, n_estimators=200 |
-| ElasticNet logistic | 0.512 | C=0.3, l1_ratio=0.8 |
-
-Top three are within bootstrap noise (±0.05 at N=113 train).
-
-### 3.5 Holdout final + calibration
-
-| Model (tuned) | test AUC | test Acc | Brier | LogLoss |
-|---|---:|---:|---:|---:|
-| **tuned RF** | **0.656** | 0.638 | 0.241 | 0.682 |
-| tuned ElasticNet | 0.633 | 0.553 | 0.241 | 0.676 |
-| tuned LightGBM | 0.591 | 0.553 | 0.275 | 0.832 |
-| tuned XGBoost | 0.572 | 0.702 | 0.266 | 0.772 |
-| **Winner + sigmoid calibration** | 0.536 | 0.532 | 0.252 | 0.698 |
-
-> ⚠️ Calibration (sigmoid Platt on valid → eval test) **drops AUC**. This is
-> typical when calibration set (valid N=88) doesn't reflect test
-> distribution (test contains 8 playoff games with different dynamics).
-> For deployment recommend: refit calibration on train+valid combined,
-> or use isotonic on a larger validation pool.
-
-### 3.6 SHAP top features (winner = tuned RF)
-
-`Results/figures/shap_summary.png` — top 8 features by |SHAP|:
-
-1. **`diff_elo`** — biggest impact. High home Elo - away Elo → predicts home win. Validates team-strength axis.
-2. **`diff_OPS_30g`** — the 打者狀態 feature. Second most important — **confirms the batter-state engineering pays off**.
-3. **`diff_at_stadium_OPS`** — team-stadium familiarity matters.
-4. **`diff_runs_per_g_30g`** — recent offence差.
-5. **`diff_K_pct_30g`** — strikeout rate diff (lower for home = win signal).
-6. **`pf_pre`** — Park Factor mid-importance.
-7. **`diff_pythag`** — Pythagenpat expected win差.
-8. **`diff_BB_pct_30g`** — walk rate diff.
-9. **`stadium_Tainan`** + signal (confirms 統一獅 strong HFA = 0.623).
-10. **`stadium_Xinzhuang`** − signal (confirms 富邦 home-disadvantage anomaly).
-
----
-
-## Decisions
-
-1. **Stop using cde52470 mirror as primary** — rebas release is richer
-   (368 vs 360 games) and includes Taiwan Series. cde52470 mirror lives at
-   `data/raw/cde52470_mirror/` for cross-check only.
-2. **Stadium normalize 11 → 8** with N<10 venues collapsed into `其他`.
-   This trades 4 lost levels for stable estimates on the remaining 7.
-3. **Drop 2 tied games** rather than create a `tie` class — binary
-   classification per charter.
-4. **Skip weather in sandbox**, prepare R script for user. Re-train when
-   `data/processed/games_with_weather.csv` is available (just rerun
-   `scripts/step2_features.py` + `scripts/step3_models.py`).
-5. **Tuned Random Forest is the working winner** at holdout test AUC 0.656;
-   CV (5-fold time-series) puts XGB top at 0.586 but with the top 3
-   within bootstrap noise (±0.05). Tree ensembles consistently beat
-   logistic — signalling non-linear interactions, especially around
-   stadium × team-strength.
-6. **Calibration regressed in this run** (sigmoid AUC 0.536 < raw 0.656).
-   Test set is too small/atypical (playoffs) for Platt to generalise.
-   Recommend isotonic on train+valid combined for deployment.
-7. **打者狀態 features matter**: `diff_OPS_30g`, `diff_runs_per_g_30g`,
-   `diff_K_pct_30g`, `diff_at_stadium_OPS` all in top-5 SHAP. Build-out of
-   the batter-state schema in 02a was the right call.
-
----
-
-## Improvements over Sub-Agent 2 audit (reports/02a)
-
-| Issue raised in 02a | Resolution here |
+| Artifact | Use |
 |---|---|
-| `H/HR/2B/3B/BB/SO` is home+away combined | ✅ Fixed — `scripts/step1_*` re-aggregates per side |
-| Stadium has 11 not 7 | ✅ Mapped 11 → 8 with documented rationale |
-| Weather completely missing | ⚠️ Script ready, awaits API key |
-| 打者狀態 schema defined but not implemented | ✅ Implemented as 27 cols of team-game rolling |
-| Single 2024 season N=360 too small | ⚠️ Still single season — recommend pulling 2022/2023 from rebas |
-| Time-leak risk in rolling | ✅ All rolling uses prior-game-only data + `lag(cumsum)` |
+| `Results/eval/predictions.csv` | leak-free per-game OOF `p_home_win` for the whole post-warmup season + `pred_at_0.5`, `pred_at_<thr>`, `is_holdout` — Shiny's main data source |
+| `models/best_model.joblib` | `{model, features, categorical, numeric, threshold, winner}` — production scoring (a future `predict_today.py`, not reticulate) |
+| `Results/eval/feature_schema.json` | winner, params, feature groups, stadium levels, CV/holdout AUC + CI — Shiny input form contract |
+| `Results/figures/*.png` | model_comparison / calibration / shap_summary |
 
 ---
 
-## How to Reproduce (local R)
+## How to reproduce (Colab — one shot)
 
-```bash
-# 1. Download release zips (or use git LFS)
-mkdir -p data/raw/rebas_v0.1.0-2024
-cd data/raw/rebas_v0.1.0-2024
-for f in CPBL-2024-OpenData.zip CPBL-2024-Challenge-OpenData.zip \
-         CPBL-2024-TaiwanSeries-OpenData.zip; do
-  curl -sL -O "https://github.com/rebas-tw/rebas.tw-open-data/releases/download/v0.1.0-2024/$f"
-  unzip -q "$f"
-done
-cd -
-
-# 2. Run the R pipeline
-Rscript R/load_rebas_data.R
-echo "CWA_API_KEY=..." >> .Renviron && Rscript R/fetch_cwa.R   # optional
-Rscript R/compute_features.R
-Rscript scripts/03_build_models.R
+```python
+REPO = "/content/data_science_final_project"   # adjust if your path differs
+import os, subprocess, sys
+os.chdir(REPO)
+subprocess.run(["git", "fetch", "origin"], check=True)
+subprocess.run(["git", "reset", "--hard",
+                "origin/claude/setup-main-agent-BhYTE"], check=True)
+print(subprocess.run(["git", "log", "-1", "--oneline"],
+                      capture_output=True, text=True).stdout)   # verify HEAD
+# rebas zips must already be unzipped under data/raw/  (2024 [+ optional 2023])
+subprocess.run([sys.executable, "scripts/run_all.py"], check=True)
+# push regenerated artifacts back
+subprocess.run(["git", "add", "-f",
+                "Results/eval", "Results/figures"], check=False)
+# (predictions.csv / feature_schema.json / _final_metrics.json all live
+#  under Results/eval/, so the line above already covers them)
+subprocess.run(["git", "commit", "-m", "data: Run B artifacts (weather)"],
+               check=False)
+subprocess.run(["git", "push", "origin",
+                "HEAD:claude/setup-main-agent-BhYTE"], check=False)
 ```
 
-Or the Python pipeline (no R deps needed):
-```bash
-python3 scripts/step1_build_raw_games.py
-python3 scripts/step2_features.py
-python3 scripts/step3_models.py
-```
+Local R mirrors (`R/load_rebas_data.R`, `R/compute_features.R`,
+`scripts/03_build_models.R`) are kept for cross-checking only; the Python
+path is authoritative.
 
 ---
 
 ## File inventory (this round)
 
-### New files (committed to branch `claude/setup-main-agent-BhYTE`)
 ```
 scripts/
-  step1_build_raw_games.py       # rebas → raw_games.csv (366 rows, 58 cols)
-  step2_features.py              # raw_games.csv → model_ready_data.csv (103 cols)
-  step3_models.py                # m1..m7 + 5-algo + tuning + holdout
-  eda_cde52470_audit.py          # previous round, kept for cross-check
-  03_build_models.R              # R production mirror
-
-R/
-  load_rebas_data.R              # R mirror of step1
-  compute_features.R             # R mirror of step2 (uses R/elo_pythag.R)
-  fetch_cwa.R                    # user-local CWA observation fetch
-  elo_pythag.R                   # (existing) team-strength functions
-
-data/raw/_lookup/
-  stadium_to_station.csv         # 11 stadiums × CWA station mapping
-
-reports/
-  02a_cde52470_data_audit.md     # previous round audit + 打者狀態 spec
-  03_step1_to_step3.md           # this file
+  step1_build_raw_games.py    # multi-season auto-discover → raw_games.csv
+  step1b_fetch_weather.py     # NEW — Open-Meteo, stdlib, no key
+  step2_features.py           # auto-uses weather csv when present
+  step3_models.py             # m1..m7 + algo + CV-winner + isotonic + Shiny artifacts
+  run_all.py                  # NEW — one-shot orchestrator + stale-pull guard
+R/  load_rebas_data.R · compute_features.R · fetch_cwa.R · elo_pythag.R   # reference mirrors
+data/raw/_lookup/stadium_to_station.csv   # + lat/lon
+reports/03_step1_to_step3.md  # this file
 ```
 
-### Gitignored outputs (sandbox-only)
-```
-data/raw/rebas_v0.1.0-2024/*.zip + extracted folders
-data/processed/raw_games.csv
-data/processed/model_ready_data.csv
-data/processed/park_factors.csv
-data/raw/_provenance/manifest_step1.json
-Results/eval/{results_ablation, results_algos, results_tuned, _final_metrics}.csv/.json
-Results/figures/{model_comparison, calibration, shap_summary}.png
-```
+Gitignored (regenerated in Colab, force-added when curated):
+`data/processed/*.csv`, `models/*.joblib`, `Results/eval/*`,
+`Results/figures/*.png`, `data/raw/.cache_weather/`.
 
 ---
 
-*Closes Step 1 / Step 2 / Step 3 of the CPBL Home-Win Prediction project.*
-*Weather data fold-in pending user local execution of `R/fetch_cwa.R`.*
+*Step 1 / 1b / 2 / 3 — Python canonical. Run B (weather) regenerates on the
+next Colab `run_all.py`; R Shiny consumes the precomputed artifacts.*

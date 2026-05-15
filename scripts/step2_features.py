@@ -1,11 +1,16 @@
 """
 scripts/step2_features.py
 
-Step 2 - Feature engineering (no weather; CWA fetch is step 1.4 user-local).
+Step 2 - Feature engineering.
 
-Inputs:  data/processed/raw_games.csv  (from step1)
+Inputs:  data/processed/games_with_weather.csv  (from step1b; preferred)
+         data/processed/raw_games.csv           (step1 fallback if no weather)
 Outputs: data/processed/model_ready_data.csv
          data/processed/park_factors.csv
+
+Weather columns (temperature/humidity/wind_speed/wind_dir/precip/wind_dir_cat)
+ride straight through to model_ready_data.csv when step1b has been run;
+step3 imputes any NA and ablation m3/m4/m7 then become meaningful.
 
 Feature groups produced (ALL strictly pre-game, no t-leakage):
   - Elo: home_elo_pre / away_elo_pre / diff_elo  (K=4, HFA=24, MoV-adjusted)
@@ -25,7 +30,9 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-IN_CSV = ROOT / "data/processed/raw_games.csv"
+WEATHER_CSV = ROOT / "data/processed/games_with_weather.csv"
+RAW_CSV = ROOT / "data/processed/raw_games.csv"
+IN_CSV = WEATHER_CSV if WEATHER_CSV.exists() else RAW_CSV
 OUT_CSV = ROOT / "data/processed/model_ready_data.csv"
 PF_CSV = ROOT / "data/processed/park_factors.csv"
 
@@ -46,7 +53,10 @@ MIN_PA_FOR_OPS = 50    # cutoff before OPS rolling becomes trustworthy
 # ============================================================================
 df = pd.read_csv(IN_CSV, parse_dates=["date"])
 df = df.sort_values(["date", "game_id"]).reset_index(drop=True)
-print(f"loaded {len(df)} games")
+WEATHER_FEATURES = [c for c in ["temperature", "humidity", "wind_speed",
+                                "precip", "is_indoor"] if c in df.columns]
+print(f"loaded {len(df)} games from {IN_CSV.name}")
+print(f"weather features present: {WEATHER_FEATURES or 'NONE (run step1b)'}")
 
 
 # ============================================================================
