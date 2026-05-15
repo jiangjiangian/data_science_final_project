@@ -51,13 +51,20 @@ mirrors; R Shiny becomes a thin renderer of precomputed Python artifacts.
   though it slightly bends the "AI runtime off remote" policy.
 
 **Next:**
-1. **Push approval pending** — `git push origin
-   claude/setup-main-agent-BhYTE-pyml:claude/setup-main-agent-BhYTE` (FF)
-   so Colab can pull `e09b4ba` + this commit.
-2. In Colab: unzip rebas (2024 [+ optional 2023]) → `python3
+1. ✅ DONE — pushed `6383172..be0c2bf` (FF) to
+   `origin (jiangjiangian fork)/claude/setup-main-agent-BhYTE`
+   (pipeline `e09b4ba` + memory `d4ef2d6` + reorg `be0c2bf`).
+2. **Local decomposition not yet live in main checkout.** In the user's
+   main checkout: `git fetch && git reset --hard
+   origin/claude/setup-main-agent-BhYTE`, THEN copy
+   `.claude/worktrees/pyml/{.claude/rules,.claude/settings.json,CLAUDE.md}`
+   → main `.claude/` (gitignored local files; copy order matters — after
+   reset). First new session will prompt to approve the SessionStart hook.
+   After that, remove the stale worktree (`git worktree remove`).
+3. In Colab: unzip rebas (2024 [+ optional 2023]) → `python3
    scripts/run_all.py` → push back `Results/eval/*` for **Run B** (weather)
    numbers; compare m3/m6/m7 AUC with-vs-without weather.
-3. Sub-Agent 6: R Shiny skeleton reading the precompute artifacts.
+4. Sub-Agent 6: R Shiny skeleton reading the precompute artifacts.
 
 ---
 
