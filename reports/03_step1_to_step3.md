@@ -189,9 +189,9 @@ subprocess.run(["git", "push", "origin",
                 "HEAD:claude/setup-main-agent-BhYTE"], check=False)
 ```
 
-Local R mirrors (`R/load_rebas_data.R`, `R/compute_features.R`,
-`scripts/03_build_models.R`) are kept for cross-checking only; the Python
-path is authoritative.
+Local R mirrors all live under `R/` (`R/load_rebas_data.R`,
+`R/compute_features.R`, `R/03_build_models.R`) — kept for cross-checking
+only; `scripts/` is Python-only and authoritative.
 
 ---
 

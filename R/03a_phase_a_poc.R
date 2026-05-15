@@ -1,5 +1,5 @@
 # ============================================================================
-# File   : scripts/03a_phase_a_poc.R
+# File   : R/03a_phase_a_poc.R
 # Purpose: Phase A POC pipeline — fit m1-m7 on synthetic CPBL data, prove the
 #          wiring works end-to-end before Phase B touches real season data.
 # Author : Sub-Agent 4 (model-builder)
@@ -7,7 +7,7 @@
 # ============================================================================
 
 # 本腳本是 model-builder Phase A 的 entry point. 它 *只* 做 wiring 驗證:
-#   1. 讀 synthetic_games.csv (由 scripts/00_synthetic_smoke.R 產出)
+#   1. 讀 synthetic_games.csv (由 R/00_synthetic_smoke.R 產出)
 #   2. 用 R/elo_pythag.R 重算 team-strength 欄位 (取代 smoke 的 jitter)
 #   3. 用 R/build_recipes.R 拿到 m1-m7 七張 recipes
 #   4. time-aware split (charter §6.1 + CLAUDE.md §6 rule 5)
@@ -65,7 +65,7 @@ source(config$recipes_path, local = FALSE)
 if (!file.exists(config$in_path)) {
   stop(
     "synthetic_games.csv not found at ", config$in_path,
-    "\nRun: source(here::here('scripts/00_synthetic_smoke.R'))",
+    "\nRun: source(here::here('R/00_synthetic_smoke.R'))",
     " first."
   )
 }
@@ -269,5 +269,5 @@ log_info("Wrote {config$out_csv}")
 
 log_info("=== Phase A POC done ===")
 
-# session info gets dumped by scripts/00_session_info.R as a separate step.
+# session info gets dumped by R/00_session_info.R as a separate step.
 invisible(scores_wide)

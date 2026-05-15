@@ -1,5 +1,5 @@
 # ============================================================================
-# File   : scripts/00_synthetic_smoke.R
+# File   : R/00_synthetic_smoke.R
 # Purpose: Generate a synthetic CSV mimicking data-collector's full schema so
 #          Phase A POC can be smoke-tested without waiting for real CPBL data.
 # Author : Sub-Agent 4 (model-builder)
@@ -155,5 +155,5 @@ readr::write_csv(out, config$out_path)
 log_info("Wrote {nrow(out)} rows to {config$out_path}")
 
 # 提醒: 此 CSV 在 .gitignore (`data/processed/`) 內, 不會被 commit。
-# 只有腳本本身 (scripts/00_synthetic_smoke.R) 進 repo。
+# 只有腳本本身 (R/00_synthetic_smoke.R) 進 repo。
 invisible(out)

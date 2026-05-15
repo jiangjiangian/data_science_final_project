@@ -1,5 +1,5 @@
 # ============================================================================
-# File   : scripts/colab_phase_a_poc.R
+# File   : R/colab_phase_a_poc.R
 # Purpose: Self-contained, Colab-runnable Phase A POC for the CPBL Home-Team
 #          Win Prediction project (m1 - m7 ablation). Single file. No
 #          here() / source() / logger dependencies. Writes outputs to the

@@ -1,5 +1,5 @@
 # ============================================================================
-# File   : scripts/03_build_models.R
+# File   : R/03_build_models.R
 # Purpose: Entry-point R production pipeline that mirrors
 #          scripts/step3_models.py. Builds m1..m7 ablation with
 #          {tidymodels} when available, otherwise falls back to glm/glmnet/
@@ -8,7 +8,7 @@
 # 用法 (Colab / RStudio):
 #   source("R/load_rebas_data.R")     # builds data/processed/raw_games.csv
 #   source("R/compute_features.R")    # builds data/processed/model_ready_data.csv
-#   source("scripts/03_build_models.R")
+#   source("R/03_build_models.R")
 # ============================================================================
 
 suppressPackageStartupMessages({
@@ -161,5 +161,5 @@ print(algo_df)
 readr::write_csv(algo_df, here::here("Results/eval/results_algos_R.csv"))
 
 # ---- session info ----------------------------------------------------------
-source(here::here("scripts/00_session_info.R"))
+source(here::here("R/00_session_info.R"))
 message("DONE — see Results/eval/results_ablation_R.csv & results_algos_R.csv")

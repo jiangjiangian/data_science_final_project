@@ -33,9 +33,15 @@ mirrors; R Shiny becomes a thin renderer of precomputed Python artifacts.
 - `run_all.py` NEW — one-shot orchestrator; prints `git log -1` first so a
   stale Colab pull can never silently run old code again.
 - Ablation scheme made consistent across code + `reports/03` + `CLAUDE.md §2`.
-- CLAUDE.md decomposed into `.claude/rules/*.md` + `CLAUDE.local.md`; this
-  progress log added; `CLAUDE.md` `git rm --cached`'d (was tracked despite
-  being in `.gitignore` — leaking to remote on every edit).
+- CLAUDE.md decomposed into `.claude/rules/*.md` (env notes folded into
+  `rules/environment.md`, not a `CLAUDE.local.md`); thin CLAUDE.md `@import`s
+  them; this progress log added; `CLAUDE.md` `git rm --cached`'d (was tracked
+  despite `.gitignore` — leaking to remote on every edit).
+- **File architecture cleaned: `scripts/` = Python only, `R/` = all R.**
+  `git mv`'d 5 `.R` files scripts→R (history preserved); fixed the one real
+  breakage `source(here::here("scripts/00_session_info.R"))` → `R/...` plus
+  stale comment/doc paths. Python stays in `scripts/` (moving it breaks
+  `ROOT = parent.parent`).
 
 **Decisions / why:**
 - Winner by CV-AUC: holdout N=47 has ±0.10 CI; chasing holdout deltas is
