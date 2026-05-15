@@ -65,9 +65,9 @@ jobs:
         run: |
           set -e
           for f in R/elo_pythag.R R/build_recipes.R \
-                   scripts/00_synthetic_smoke.R \
-                   scripts/03a_phase_a_poc.R \
-                   scripts/00_session_info.R; do
+                   R/00_synthetic_smoke.R \
+                   R/03a_phase_a_poc.R \
+                   R/00_session_info.R; do
             echo "=== Parsing $f ==="
             Rscript -e "parse(file = '$f'); cat('OK:', '$f', '\\n')"
           done
@@ -75,18 +75,18 @@ jobs:
       - name: Generate synthetic data
         run: |
           mkdir -p data/processed
-          Rscript scripts/00_synthetic_smoke.R
+          Rscript R/00_synthetic_smoke.R
 
       - name: Run Phase A POC pipeline
         run: |
           mkdir -p models/poc Results/figures
-          Rscript scripts/03a_phase_a_poc.R
+          Rscript R/03a_phase_a_poc.R
 
       - name: Dump session info
         if: always()
         run: |
           mkdir -p Results
-          Rscript scripts/00_session_info.R || true
+          Rscript R/00_session_info.R || true
 
       - name: Upload POC artefacts
         if: always()
