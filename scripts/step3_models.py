@@ -52,8 +52,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
                              brier_score_loss, f1_score, log_loss,
                              roc_auc_score)
-from sklearn.model_selection import (GridSearchCV, TimeSeriesSplit,
-                                     cross_val_predict)
+from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import lightgbm as lgb
@@ -165,6 +164,22 @@ def auc_bootstrap_ci(y_true, p_hat, n_boot=1000, seed=RNG):
     if not vals:
         return (float("nan"), float("nan"))
     return (float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5)))
+
+
+def ts_oof_proba(estimator, X, y, splitter):
+    """Walk-forward out-of-fold P(y=1). TimeSeriesSplit is NOT a partition
+    (the first training block is never a test fold), so cross_val_predict
+    rejects it with 'only works for partitions'. Do it by hand: clone + fit
+    on each fold's past, predict its future. Rows never in any test fold
+    stay NaN; the caller masks them."""
+    X = X.reset_index(drop=True)
+    y = pd.Series(np.asarray(y))
+    oof = np.full(len(y), np.nan)
+    for tr, te in splitter.split(X):
+        est = clone(estimator)
+        est.fit(X.iloc[tr], y.iloc[tr])
+        oof[te] = est.predict_proba(X.iloc[te])[:, 1]
+    return oof
 
 
 # ============================================================================
@@ -331,18 +346,16 @@ print(f"  -> serving {'CALIBRATED' if use_calibrated else 'RAW'} "
 # 6. Threshold: leak-free trainval OOF (TimeSeriesSplit) -> Youden's J
 #    Report holdout @0.5 AND @tuned side-by-side (do NOT silently replace).
 # ============================================================================
-oof = cross_val_predict(clone(winner_fitted), Xtv, ytv, cv=tscv,
-                        method="predict_proba", n_jobs=4)[:, 1]
-y_oof = ytv.values
+oof = ts_oof_proba(winner_fitted, Xtv, ytv, tscv)
+_m = ~np.isnan(oof)                       # drop the unscored warm-up fold
+oof_m, y_oof = oof[_m], ytv.values[_m]
 pos, neg = y_oof == 1, y_oof == 0
 n_pos, n_neg = max(pos.sum(), 1), max(neg.sum(), 1)
 
 
 def youden_j(t):
-    pred = oof >= t
-    tpr = (pred & pos).sum() / n_pos
-    fpr = (pred & neg).sum() / n_neg
-    return tpr - fpr
+    pred = oof_m >= t
+    return (pred & pos).sum() / n_pos - (pred & neg).sum() / n_neg
 
 
 ths = np.linspace(0.30, 0.70, 41)
@@ -435,18 +448,22 @@ if use_calibrated:
                                      cv=TimeSeriesSplit(3))
 else:
     oof_est = clone(winner_fitted)
-oof_all = cross_val_predict(oof_est, df[m7], df[TARGET], cv=tscv,
-                            method="predict_proba", n_jobs=4)[:, 1]
+oof_all = ts_oof_proba(oof_est, df[m7], df[TARGET], tscv)
+keep = ~np.isnan(oof_all)                  # earliest fold is never scored
+oofk = oof_all[keep]
 pred_cols = ["game_id", "date", "stadium", "home_team", "away_team"]
-predictions = df[pred_cols].copy()
-predictions["y_true"] = df[TARGET].values
-predictions["p_home_win"] = oof_all
-predictions["pred_at_0.5"] = (oof_all >= 0.5).astype(int)
-predictions[f"pred_at_{thr_opt:.2f}"] = (oof_all >= thr_opt).astype(int)
-predictions["is_holdout"] = (df["date"] >= "2024-09-16").astype(int)
+predictions = df.loc[keep, pred_cols].copy()
+predictions["y_true"] = df.loc[keep, TARGET].values
+predictions["p_home_win"] = oofk
+predictions["pred_at_0.5"] = (oofk >= 0.5).astype(int)
+predictions[f"pred_at_{thr_opt:.2f}"] = (oofk >= thr_opt).astype(int)
+predictions["is_holdout"] = (df.loc[keep, "date"] >= "2024-09-16").astype(int)
 predictions.to_csv(EVAL / "predictions.csv", index=False)
-oof_auc = roc_auc_score(df[TARGET], oof_all)
-print(f"  predictions.csv  rows={len(predictions)}  season-OOF-AUC={oof_auc:.3f}")
+oof_auc = (roc_auc_score(df.loc[keep, TARGET], oofk)
+           if df.loc[keep, TARGET].nunique() > 1 else float("nan"))
+print(f"  predictions.csv  rows={len(predictions)}/{len(df)} "
+      f"(walk-forward OOF; warm-up fold unscored)  "
+      f"season-OOF-AUC={oof_auc:.3f}")
 
 # 8b. production model: serve trained on ALL post-warmup data
 prod = CalibratedClassifierCV(clone(winner_fitted), method="isotonic",
