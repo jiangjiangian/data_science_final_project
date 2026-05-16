@@ -1,0 +1,90 @@
+{
+  "winner": "rf",
+  "calibrated": false,
+  "winner_params": {
+    "clf__max_depth": 4,
+    "clf__min_samples_leaf": 3,
+    "clf__n_estimators": 800
+  },
+  "threshold_opt": 0.39999999999999997,
+  "home_win_base_rate": 0.5422885572139303,
+  "n": {
+    "train": 113,
+    "valid": 88,
+    "test": 47,
+    "post_warmup": 248
+  },
+  "feature_groups": {
+    "stadium": [
+      "stadium",
+      "is_indoor"
+    ],
+    "weather": [
+      "temperature",
+      "humidity",
+      "wind_speed",
+      "precip"
+    ],
+    "team_strength": [
+      "diff_elo",
+      "diff_pythag",
+      "diff_rest",
+      "pf_pre"
+    ],
+    "batter_state": [
+      "diff_OPS_30g",
+      "diff_HR_per_g_30g",
+      "diff_K_pct_30g",
+      "diff_BB_pct_30g",
+      "diff_runs_per_g_30g",
+      "diff_at_stadium_OPS"
+    ]
+  },
+  "model_features": [
+    "stadium",
+    "is_indoor",
+    "temperature",
+    "humidity",
+    "wind_speed",
+    "precip",
+    "diff_elo",
+    "diff_pythag",
+    "diff_rest",
+    "pf_pre",
+    "diff_OPS_30g",
+    "diff_HR_per_g_30g",
+    "diff_K_pct_30g",
+    "diff_BB_pct_30g",
+    "diff_runs_per_g_30g",
+    "diff_at_stadium_OPS"
+  ],
+  "categorical_features": [
+    "stadium"
+  ],
+  "stadium_levels": [
+    "其他",
+    "大巨蛋",
+    "天母",
+    "新莊",
+    "樂天桃園",
+    "洲際",
+    "澄清湖",
+    "臺南"
+  ],
+  "metrics": {
+    "cv_auc": {
+      "xgb": 0.5320195001077354,
+      "lgb": 0.5131153961902625,
+      "elastic": 0.5104556970064992,
+      "rf": 0.5705634887987829
+    },
+    "season_oof_auc": 0.5035666088297668,
+    "holdout_auc": 0.5854545454545454,
+    "holdout_auc_ci95": [
+      0.4108469863469864,
+      0.7409639328063241
+    ],
+    "holdout_brier_raw": 0.24797496846622932,
+    "holdout_brier_cal": 0.25115554184063665
+  }
+}
