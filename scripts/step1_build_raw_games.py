@@ -31,20 +31,27 @@ PROV.mkdir(parents=True, exist_ok=True)
 
 
 def discover_sources(raw_root: Path):
-    """Find every CPBL-*OpenData*.json under data/raw/ and tag its game_type
-    and season from the filename. Returns list[(game_type, season, path)]
-    sorted by (season, type-rank) so the time-ordered build is stable."""
+    """Find every combined rebas OpenData JSON under data/raw/ and tag its
+    game_type and season from the filename. Returns list[(game_type, season,
+    path)] sorted by (season, type-rank) so the time-ordered build is stable.
+
+    NOTE: the 2024 release uses ASCII names (CPBL-2024-OpenData.json); the
+    2023 release uses Chinese names (中職2023年-OpenData.json /
+    中職2023年下半季-OpenData.json / 中職2023年-季後挑戰賽-OpenData.json /
+    中職2023年-台灣大賽-OpenData.json). Match on the shared 'OpenData' token
+    only — this still excludes the per-game *-G<N>.json files (no 'OpenData'
+    in their names). A 'CPBL-*' prefix would silently drop all 2023 data."""
     type_rank = {"regular": 0, "challenge": 1, "series": 2}
     found = []
-    for p in sorted(raw_root.rglob("CPBL-*OpenData*.json")):
+    for p in sorted(raw_root.rglob("*OpenData*.json")):
         name = p.name
-        if "Challenge" in name:
+        if "Challenge" in name or "挑戰" in name:        # 季後挑戰賽
             gtype = "challenge"
-        elif "TaiwanSeries" in name or "Series" in name:
+        elif "TaiwanSeries" in name or "Series" in name or "台灣大賽" in name:
             gtype = "series"
         else:
             gtype = "regular"
-        m = re.search(r"CPBL-(\d{4})", name)
+        m = re.search(r"(20\d{2})", name)               # CPBL-2024- / 中職2023年-
         season = int(m.group(1)) if m else 0
         found.append((gtype, season, p))
     found.sort(key=lambda t: (t[1], type_rank.get(t[0], 9)))
@@ -54,7 +61,7 @@ def discover_sources(raw_root: Path):
 SOURCES = [(g, p) for (g, _s, p) in discover_sources(RAW_ROOT)]
 if not SOURCES:
     raise FileNotFoundError(
-        f"No CPBL-*OpenData*.json found under {RAW_ROOT}. "
+        f"No *OpenData*.json found under {RAW_ROOT}. "
         "Unzip rebas releases into data/raw/ first."
     )
 print("discovered sources:")

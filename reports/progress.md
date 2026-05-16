@@ -11,6 +11,50 @@
 
 ---
 
+## 2026-05-16 — 2023 data silently dropped: glob root-cause fixed
+
+User flipped `USE_2023` but Cell 4 reported only 3 (2024) JSON and **did
+not error**. Investigated with ground-truth zip inspection (not doc
+assumptions). **Root cause:** the rebas 2024 release uses ASCII filenames
+(`CPBL-2024-OpenData.json`); the **2023** release uses *Chinese* names
+(`中職2023年-OpenData.json` / `中職2023年下半季-OpenData.json` /
+`中職2023年-季後挑戰賽-OpenData.json` / `中職2023年-台灣大賽-OpenData.json`).
+Both `step1.discover_sources` and notebook Cell 4 hard-globbed
+`CPBL-*OpenData*.json` → every 2023 file silently skipped (no raise → the
+bug was invisible). The URLs/tags were correct all along (GitHub-API
+verified: tags `v0.1.0-2023.0`/`.1`, asset names exact).
+
+**Fix:**
+- `discover_sources`: glob `CPBL-*OpenData*` → `*OpenData*` (still excludes
+  per-game `*-G<N>.json` — they lack the 'OpenData' token); `game_type`
+  now also keys on Chinese 挑戰/台灣大賽; season regex `CPBL-(\d{4})` →
+  `(20\d{2})`. Comment block documents why a `CPBL-*` prefix is wrong.
+- `colab_run.ipynb`: same glob fix; `USE_2023` default **True** (single
+  2024 is proven no-signal — no reason to default to it); per-zip subdir
+  extraction; `assert ≥7 combined`; **NEW Cell 4b** pitcher-data
+  diagnostic (prints schema + starter sanity; gates the pitcher code).
+- Verified **locally** before push: AST-extracted the edited
+  `discover_sources`, ran it on the real rebas filename set → 7 combined
+  found, per-game decoys excluded, 2023+2024 + challenge/series tagged
+  correctly. (macOS/OneDrive can't create CJK filenames via `unzip` —
+  locale `Illegal byte sequence`; Colab Linux UTF-8 has no such issue.)
+
+**Why default `USE_2023=True`:** Run B proved one 2024 season carries no
+out-of-sample signal; defaulting the notebook to the no-signal config was
+a footgun. The whole point now is N≈700 + the pitcher lever.
+
+**Next:**
+1. User re-runs notebook (Cell 2 `reset --hard` pulls this fix) → pastes
+   **Cell 4b + Cell 6 JSON**. Cell 6 = the conclusive N≈700 2-group
+   answer (does data alone move AUC off 0.5?).
+2. On Cell 4b output: build leak-free starting-pitcher (starter =
+   `order==1`, per-`playerId` rolling) + bullpen features into
+   `step1`/`step2`; add **m6=pitching** to `step3`. m1–m7 scheme LOCKED:
+   intercept / stadium / weather / team-strength / batter-state /
+   **pitching** / full — change `modeling.md` + `reports/03` + `step3`
+   in one commit. No scraper, no CWA key (rebas has pitcherBox; weather
+   is the empirically worst group).
+
 ## 2026-05-16 — Run B complete: single 2024 season ≈ NO out-of-sample signal
 
 Pipeline now runs end-to-end in Colab (fixed `cross_val_predict`→walk-forward
