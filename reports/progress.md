@@ -11,6 +11,38 @@
 
 ---
 
+## 2026-05-16 — Run B complete: single 2024 season ≈ NO out-of-sample signal
+
+Pipeline now runs end-to-end in Colab (fixed `cross_val_predict`→walk-forward
+OOF, `3d808dc`; added `colab_run.ipynb` one-click, `7e57c5d`). User ran it
+with weather, pushed artifacts (`8fca820`).
+
+**The finding (honest, important):**
+- **`season_oof_auc = 0.504`** over 205 leak-free walk-forward games — the
+  largest-N, least-noisy metric. ≈ coin flip. No real signal.
+- Ablation m1–m7 (logistic, test): m1 .500 / m2 stadium .504 / m3 weather
+  **.436** / m4 strength .525 / m5 batter .429 / m6 env .467 / m7 full .455.
+  **No feature group beats the home-field intercept.** Weather is the worst.
+- Holdout tuned_rf .585 [.41,.74], tuned_xgb .589 [.42,.75] — CIs span
+  random→good ⇒ noise. Run A's "0.656" was N=47 cherry-noise; the
+  season-OOF + bootstrap CI (added precisely to catch this) confirm it.
+- Calibration regressed again (.509<.585) → served raw. Correct logic.
+
+**Why / interpretation:** single-game baseball is near-random without
+starting-pitcher info; MLB SOTA pre-game ≈ .58–.60 with far more data. One
+CPBL season, no SP features → ≈.50 is the expected, defensible answer. This
+is a clean negative result the methodology *correctly* surfaces (not an
+overclaim). Good DS narrative for the report.
+
+**Next (decisive):**
+1. **Don't chase it** — no more tuning/stacking; that's fitting noise.
+2. Biggest lever: rerun notebook with `USE_2023=True` (N→~700, holdout
+   →~150). Gives a *conclusive* tight-CI number, not signal-from-nothing.
+3. Real modeling gap: **starting pitcher** features (check if rebas JSON has
+   pitching box / probable starters). Only thing likely to move AUC.
+4. Report should lead with `season_oof_auc`+CI and the ablation, framed as
+   "no group beats HFA on one season; consistent with known near-randomness".
+
 ## 2026-05-15 — Python pivot + memory decomposition
 
 **Context shift:** instructor approved Python; `tidymodels` proved too slow in
