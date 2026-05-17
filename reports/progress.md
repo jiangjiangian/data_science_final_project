@@ -11,6 +11,48 @@
 
 ---
 
+## 2026-05-17 — Run E: DECISIVE — pitching is NOT a lever; clean negative result
+
+Per-group season-OOF (the robust gate, leak-free walk-forward over 455
+post-warmup games) landed:
+
+| group | season-OOF | read |
+|---|---|---|
+| m1 intercept | ~.50 | HFA baseline = chance |
+| m2 stadium | .512 | within noise of .50 |
+| m3 weather | .524 | within noise of .50 (and .436 on holdout) |
+| m4 team-strength | .500 | nothing |
+| m5 batter-state | .500 | nothing |
+| **m6 pitching** | **.463** | **worst — below chance** |
+| m7 full(27) | .495 | nothing |
+
+**Verdict (the pre-agreed decision rule, second branch):** m6 = .463
+≪ .50 → Run D's seductive **holdout m6 = .689 was pure N=47 noise** —
+the exact Run-A trap, now caught a *second* time by the season-OOF +
+bootstrap-CI machinery. **No feature group beats the home-field
+intercept walk-forward. Pitching included.** OOF ≈.50 across every
+engineered signal over two full seasons → this is not a pitching-
+encoding problem; single-game CPBL home-win is near-random pre-game at
+this sample size (consistent with MLB pre-game SOTA ≈.58–.60 needing
+vastly more data + market signal).
+
+**This is the project's result — and it is a good one.** The
+contribution is the *methodology*: rigorous time-aware evaluation that
+**twice** detected and deflated tempting holdout noise (Run A .656,
+Run D m6 .689 → .463). The pitching holdout→OOF collapse is a textbook,
+dramatic illustration of why N=47 holdout ranking is dangerous — report
+centrepiece, not a failure.
+
+**Decision — STOP modelling. Pivot to deliverables:**
+- No parsimonious model: its gate (m6 season-OOF > .50) **failed**.
+- No more features / tuning — that is fitting noise (same call as
+  Run B "don't chase it"; now empirically reconfirmed with pitching).
+- Production stays the CV-AUC-over-m7 winner (`rf`, raw,
+  season-OOF .528 / holdout .640 CI[.45,.81]) — reported **honestly
+  with the CI and the negative ablation**, not as a success number.
+- Next = the report + R Shiny built around the honest finding and the
+  holdout-trap story (Sub-Agent 6), NOT another AUC chase.
+
 ## 2026-05-17 — Run D: pitching IS the lever (m6 .689); m7 bloat dilutes it
 
 User pasted a **stale clipboard** (Run C JSON verbatim, season_oof

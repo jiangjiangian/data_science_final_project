@@ -191,18 +191,31 @@ random→good and is pure noise at this size.
   *underperforms* m6 alone — the 16 known-noise features
   (stadium/weather/batter-state, ≈.5 since Run B) dilute the signal and
   the small-N model overfits.
-- **Run E — the decisive test (this code):** step3 now computes
-  **per-group season-OOF** (leak-free walk-forward over the whole
-  post-warmup season, logistic, in `results_ablation.csv` and
-  `_final_metrics.json:ablation_season_oof`). The headline question is
-  one comparison: **does m6 pitching season-OOF exceed the ~0.50 HFA
-  baseline (m1) walk-forward?** If yes → pitching is a real lever and a
-  *parsimonious* model (pitching + the proven-non-noise `diff_elo` /
-  `pf_pre`) becomes the reported model, not the 27-feature m7. If m6
-  season-OOF ≈0.50 → the .689 was N=47 noise and the project's clean
-  conclusion stands: single-game CPBL home-win is near-random pre-game.
-  Production artifacts stay on the CV-AUC-over-m7 winner until
-  per-group season-OOF confirms — methodology integrity over headline.
+- **Run E — DECISIVE (per-group season-OOF):** leak-free walk-forward
+  over 455 post-warmup games. **`ablation_season_oof`:** m1 ≈.50
+  (chance) / m2 .512 / m3 .524 / m4 .500 / m5 .500 / **m6 pitching
+  .463** / m7 full .495. Run D's holdout **m6 .689 was pure N=47
+  noise** — the same trap as Run A's .656, caught a *second* time by
+  the season-OOF + bootstrap-CI design. **No feature group beats the
+  HFA intercept out-of-sample; pitching is the *worst*.** Two full
+  seasons, every engineered signal ≈.50 walk-forward → single-game
+  CPBL home-win is near-random pre-game at this N (consistent with
+  MLB pre-game SOTA ≈.58–.60 requiring far more data + market signal).
+
+#### Conclusion (this is the result — and it is a good one)
+
+The contribution is **methodological, not a high AUC**. A rigorous
+time-aware pipeline (walk-forward OOF, CV-AUC winner selection,
+bootstrap CIs, single calibration, dual thresholds) **twice detected
+and deflated seductive holdout noise** — Run A's RF .656 and Run D's
+pitching .689 both collapsed to ≈.50 walk-forward. The
+pitching holdout→OOF collapse (.689 → .463 at N=47) is a concrete,
+dramatic case study of why small-holdout ranking is dangerous: the
+report's centrepiece. Honest negative results, correctly surfaced by
+the methodology, are the deliverable. No further feature/tuning work
+(that is fitting noise); production = the CV-AUC-over-m7 winner
+(`rf`, raw, season-OOF .528, holdout .640 CI[.45,.81]) reported
+*with* its CI and the negative ablation, never as a success number.
 
 ---
 
