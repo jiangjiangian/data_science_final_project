@@ -19,7 +19,9 @@ Feature groups produced (ALL strictly pre-game, no t-leakage):
   - Batter-state team-game rolling (30g): OPS, AVG, SLG, OBP, ISO, K%, BB%, HR/G, R/G
   - Stadium-specific OPS: team_at_stadium_OPS_30g (per team in this stadium)
   - Park Factor (multi-stadium, leave-one-out time-aware): pf_pre
-  - Diff features: home minus away for OPS/HR/K%/runs_per_game
+  - Pitching: team-staff rolling 30g (ERA/WHIP/K%/BB%/HR9) + each
+    starting pitcher's own last-5-start form (sp*_l5) — leak-free
+  - Diff features: home minus away for OPS/HR/K%/runs_per_game/pitching
 
 Usage:  python3 scripts/step2_features.py
 """
@@ -46,6 +48,11 @@ PYTHAG_EXPONENT = 1.83
 REST_CAP = 5
 ROLL_WINDOW = 30
 MIN_PA_FOR_OPS = 50    # cutoff before OPS rolling becomes trustworthy
+STAFF_PWINDOW = 30     # team pitching-staff rolling window (team-games)
+STAFF_MIN_PRIOR = 5    # warm-up before staff rolling is trustworthy
+SP_PWINDOW = 5         # per-starter rolling = that pitcher's last 5 starts
+SP_MIN_PRIOR = 3       # < this many prior starts -> NaN (step3 median-imputes
+                       #   = league fallback; median is only ~10 starts/pitcher)
 
 
 # ============================================================================
@@ -268,6 +275,112 @@ df["diff_at_stadium_OPS"] = df["home_at_stadium_OPS_30g"] - df["away_at_stadium_
 
 
 # ============================================================================
+# 6b. Pitching rolling — team staff (30 team-games) + each starting
+#     pitcher's OWN recent form (last 5 starts). Strictly prior games only
+#     (leak-free): the starter's identity is known at first pitch — not
+#     leakage — but only their PRIOR lines feed the feature, never this game.
+#     ERA/WHIP/HR9 use IP = IPOuts/3; K%/BB% use batters-faced.
+# ============================================================================
+def _pitch_rates(prev, min_prior, pfx):
+    keys = ["ERA", "WHIP", "K_pct", "BB_pct", "HR9"]
+    if pfx == "sp":
+        keys = keys + ["IPouts"]
+    if len(prev) < min_prior:
+        return {f"{pfx}{k}": np.nan for k in keys}
+    S = prev[["IPOuts", "ER", "H", "HR", "BB", "SO", "BF"]].sum()
+    ip = S["IPOuts"] / 3.0
+    bf = S["BF"]
+    out = {
+        f"{pfx}ERA":    (9.0 * S["ER"] / ip) if ip > 0 else np.nan,
+        f"{pfx}WHIP":   ((S["BB"] + S["H"]) / ip) if ip > 0 else np.nan,
+        f"{pfx}K_pct":  (S["SO"] / bf) if bf > 0 else np.nan,
+        f"{pfx}BB_pct": (S["BB"] / bf) if bf > 0 else np.nan,
+        f"{pfx}HR9":    (9.0 * S["HR"] / ip) if ip > 0 else np.nan,
+    }
+    if pfx == "sp":
+        out["spIPouts"] = prev["IPOuts"].mean()      # durability: outs/start
+    return out
+
+
+def _merge_pitch(df_in, F, metrics, suf):
+    out = df_in
+    for col in metrics:
+        h = F[F["side"] == "home"][["game_id", col]].rename(
+            columns={col: f"home_{col}{suf}"})
+        a = F[F["side"] == "away"][["game_id", col]].rename(
+            columns={col: f"away_{col}{suf}"})
+        out = out.merge(h, on="game_id", how="left").merge(a, on="game_id", how="left")
+        out[f"diff_{col}{suf}"] = out[f"home_{col}{suf}"] - out[f"away_{col}{suf}"]
+    return out
+
+
+def rolling_pitching(df_in, staff_window=STAFF_PWINDOW, sp_window=SP_PWINDOW,
+                     sp_min_prior=SP_MIN_PRIOR, staff_min_prior=STAFF_MIN_PRIOR):
+    # ---- A. team pitching-staff rolling, keyed by team (mirror batter-state).
+    #         *_30g-suffixed -> shares the warm-up filter with batter-state.
+    rows = []
+    for _, r in df_in.iterrows():
+        for side in ("home", "away"):
+            rows.append({
+                "game_id": r["game_id"], "date": r["date"], "side": side,
+                "team": r[f"{side}_team"],
+                "IPOuts": r[f"{side}_pIPOuts"], "ER": r[f"{side}_pER"],
+                "H": r[f"{side}_pH"], "HR": r[f"{side}_pHR"],
+                "BB": r[f"{side}_pBB"], "SO": r[f"{side}_pSO"],
+                "BF": r[f"{side}_pBF"],
+            })
+    L = pd.DataFrame(rows).sort_values(["team", "date", "game_id"]).reset_index(drop=True)
+    feat = []
+    for _team, g in L.groupby("team"):
+        g = g.reset_index(drop=True)
+        for i in range(len(g)):
+            prev = g.iloc[max(0, i - staff_window):i]
+            row = {"game_id": g.iloc[i]["game_id"], "side": g.iloc[i]["side"]}
+            row.update(_pitch_rates(prev, staff_min_prior, "staff"))
+            feat.append(row)
+    df_in = _merge_pitch(df_in, pd.DataFrame(feat),
+                         ["staffERA", "staffWHIP", "staffK_pct",
+                          "staffBB_pct", "staffHR9"], "_30g")
+
+    # ---- B. per-starter rolling, keyed by sp_id (pool the pitcher's starts
+    #         home OR away — pitching skill is venue-independent). Cold start
+    #         (< sp_min_prior prior starts) -> NaN, deliberately left for
+    #         step3's median imputer = the league-average fallback tier.
+    #         _l5-suffixed (NOT _30g) so the warm-up filter does NOT drop
+    #         every rookie / spot-start game (median ~10 starts/pitcher).
+    rows = []
+    for _, r in df_in.iterrows():
+        for side in ("home", "away"):
+            spid = r.get(f"{side}_sp_id")
+            if spid is None or (isinstance(spid, float) and pd.isna(spid)):
+                continue
+            rows.append({
+                "game_id": r["game_id"], "date": r["date"], "side": side,
+                "sp_id": spid,
+                "IPOuts": r[f"{side}_sp_IPOuts"], "ER": r[f"{side}_sp_ER"],
+                "H": r[f"{side}_sp_H"], "HR": r[f"{side}_sp_HR"],
+                "BB": r[f"{side}_sp_BB"], "SO": r[f"{side}_sp_SO"],
+                "BF": r[f"{side}_sp_BF"],
+            })
+    L = pd.DataFrame(rows).sort_values(["sp_id", "date", "game_id"]).reset_index(drop=True)
+    feat = []
+    for _spid, g in L.groupby("sp_id"):
+        g = g.reset_index(drop=True)
+        for i in range(len(g)):
+            prev = g.iloc[max(0, i - sp_window):i]
+            row = {"game_id": g.iloc[i]["game_id"], "side": g.iloc[i]["side"]}
+            row.update(_pitch_rates(prev, sp_min_prior, "sp"))
+            feat.append(row)
+    df_in = _merge_pitch(df_in, pd.DataFrame(feat),
+                         ["spERA", "spWHIP", "spK_pct", "spBB_pct",
+                          "spHR9", "spIPouts"], "_l5")
+    return df_in
+
+
+df = rolling_pitching(df)
+
+
+# ============================================================================
 # 7. Park Factor — time-aware, leave-one-out
 # ============================================================================
 def park_factor_time_aware(df_in):
@@ -329,6 +442,6 @@ print(f"features_complete (no NA in 30g rolling): {df['features_complete'].sum()
 df.to_csv(OUT_CSV, index=False, encoding="utf-8")
 print(f"\nwritten: {OUT_CSV}")
 print("columns added in step 2:")
-new_cols = [c for c in df.columns if c.endswith(("_pre", "_30g", "_pythag", "_rest_days", "_rest", "_elo", "_OPS")) or c in ("dow", "month", "is_weekend", "pf_pre", "diff_elo", "diff_pythag", "features_complete")]
+new_cols = [c for c in df.columns if c.endswith(("_pre", "_30g", "_l5", "_pythag", "_rest_days", "_rest", "_elo", "_OPS")) or c in ("dow", "month", "is_weekend", "pf_pre", "diff_elo", "diff_pythag", "features_complete")]
 for c in sorted(new_cols):
     print(f"  {c}")

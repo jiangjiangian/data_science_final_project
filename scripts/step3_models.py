@@ -5,7 +5,7 @@ Step 3 — m1..m7 ablation + algorithm comparison + tuning + honest holdout
          + ONE calibration + dual-threshold report + Shiny artifacts.
 
 Time-aware splits (NEVER random — this is time-series sports data):
-  train = games BEFORE 2024-08-01
+  train = games BEFORE 2024-08-01   (all of 2023 + 2024<Aug land here)
   valid = 2024-08-01 .. 2024-09-15
   test  = 2024-09-16 .. end (Sep-Oct + playoffs; held out, untouched in fit)
 
@@ -16,8 +16,13 @@ the textbook way to quantify each group's marginal contribution):
   m3 weather only
   m4 team-strength only        (Elo / Pythagenpat / rest / park-factor)
   m5 batter-state only         (rolling lineup form: OPS/HR/K%/BB%/runs diff)
-  m6 stadium + weather         (charter "environment-full")
-  m7 FULL  (stadium + weather + team-strength + batter-state)
+  m6 pitching only             (starter last-5 + staff-30g: ERA/WHIP/K%/HR9)
+  m7 FULL  (stadium + weather + team-strength + batter-state + pitching)
+
+  m6 was the stadium+weather "environment" combo through Run B; it scored
+  ~0.467 (junk) so it is retired and the slot now gates the pitching group
+  — the one lever rebas data still had untapped. Scheme is LOCKED and kept
+  identical across step3 / reports/03 / .claude/rules/modeling.md.
 
 Algorithm comparison (features FIXED = full m7; only the algorithm varies):
   logit, glmnet(l2), glmnet(elasticnet), RandomForest, XGBoost, LightGBM
@@ -103,6 +108,15 @@ BATTER_STATE = [c for c in ["diff_OPS_30g", "diff_HR_per_g_30g",
                             "diff_K_pct_30g", "diff_BB_pct_30g",
                             "diff_runs_per_g_30g", "diff_at_stadium_OPS"]
                 if c in df.columns]
+# starter own last-5 form (sp*_l5, NaN-tolerant -> median-imputed) +
+# team pitching-staff rolling 30g (staff*_30g, shares warm-up filter)
+PITCHING = [c for c in ["diff_spERA_l5", "diff_spWHIP_l5",
+                        "diff_spK_pct_l5", "diff_spBB_pct_l5",
+                        "diff_spHR9_l5", "diff_spIPouts_l5",
+                        "diff_staffERA_30g", "diff_staffWHIP_30g",
+                        "diff_staffK_pct_30g", "diff_staffBB_pct_30g",
+                        "diff_staffHR9_30g"]
+            if c in df.columns]
 STADIUM_ALL = STADIUM_CAT + STADIUM_NUM
 
 if not WEATHER_COLS:
@@ -115,8 +129,8 @@ FEATURE_GROUPS = {
     "m3": WEATHER_COLS,
     "m4": TEAM_STRENGTH,
     "m5": BATTER_STATE,
-    "m6": STADIUM_ALL + WEATHER_COLS,
-    "m7": STADIUM_ALL + WEATHER_COLS + TEAM_STRENGTH + BATTER_STATE,
+    "m6": PITCHING,
+    "m7": STADIUM_ALL + WEATHER_COLS + TEAM_STRENGTH + BATTER_STATE + PITCHING,
 }
 
 
@@ -489,7 +503,8 @@ schema = {
           "post_warmup": len(df)},
     "feature_groups": {
         "stadium": STADIUM_ALL, "weather": WEATHER_COLS,
-        "team_strength": TEAM_STRENGTH, "batter_state": BATTER_STATE},
+        "team_strength": TEAM_STRENGTH, "batter_state": BATTER_STATE,
+        "pitching": PITCHING},
     "model_features": m7,
     "categorical_features": STADIUM_CAT,
     "stadium_levels": sorted(df["stadium"].dropna().unique().tolist()),

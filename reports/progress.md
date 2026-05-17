@@ -11,6 +11,54 @@
 
 ---
 
+## 2026-05-17 — Pitching features built; m1–m7 relocked (m6 = pitching)
+
+Cell-4b diagnostic (after the 2023 fix, **N=678**) verified the rebas
+pitcher schema against real data — not docs: every game-side has
+**exactly one `order==1`** (0/1356 exceptions → starter id is bulletproof);
+real fields `IPOuts/NP/BF/H/HR/BB/IBB/HB/SO/R/ER` (richer than the schema
+doc). Median **~10 starts/pitcher** (not 15–30) → drove the small
+per-starter window + cold-start fallback.
+
+**Run C (N=678, 2023 fix, pre-pitching):** `season_oof_auc 0.504→0.538`,
+CV-AUC(rf) ~0.50→0.533 — a small but *real* lift from data volume alone.
+N was a genuine factor, so pitcher work compounds (not signal-from-noise).
+
+**Built (this commit):**
+- `step1`: `aggregate_pitchers` (staff totals, `p` prefix so `home_pH` =
+  hits *allowed* ≠ batter `home_H`) + `extract_starter` (min-order row,
+  emits `*_sp_id` + line). Two separate functions (advisor point 4).
+- `step2` §6b `rolling_pitching`: (A) team-staff rolling 30 team-games
+  `staff*_30g` (shares batter-state warm-up filter); (B) per-starter
+  rolling **last 5 starts** keyed by `sp_id`, pooled home/away,
+  `sp*_l5`. `_l5` (not `_30g`) so the warm-up filter does NOT delete
+  rookie/spot-start games; <3 prior starts → NaN → step3 median-impute
+  = the deliberate league-average cold-start tier. Strictly prior games
+  (leak-free); structural mirror of the proven batter-state roller.
+- `step3`: `PITCHING` group; **m1–m7 LOCKED** — m1 intercept / m2
+  stadium / m3 weather / m4 team-strength / m5 batter-state /
+  **m6 pitching** / m7 full(5). Old m6 (stadium+weather, ≈0.467 junk)
+  retired. Docstring + `feature_schema.json.feature_groups` updated.
+- `reports/03` §3.2/§3.5 rewritten to the locked scheme + Run B/C/D.
+
+**Validation (local Mac has no numpy → Colab is the integration test):**
+py_compile all 3 ✓; static cross-file contract ✓ (every step3 PITCHING
+col is emitted by step2; every pitcher stat step2 reads is in step1
+keys; m6==PITCHING, m7⊇PITCHING). Numeric correctness rests on the
+structural mirror + standard ERA/WHIP formulas; Cell-5 `run_all.py` =
+the integration test.
+
+**PENDING (charter leg of the locked-scheme rule):**
+`.claude/rules/modeling.md` is the gitignored local decomposition; it is
+**not present in this worktree** (was authored in the `-pyml` worktree)
+so it could not be updated in this commit. When the local rules are
+synced into the main checkout, `modeling.md §2` must be set to the
+LOCKED m1–m7 above (code + this report are already consistent).
+
+**Next:** user reruns the notebook (Run D, N≈678 + pitching) → paste
+Cell 6 `_final_metrics.json`. Read m6 (pitching-only) & m7 (full)
+`season_oof_auc` vs m1 — the headline "does pitching beat HFA?" answer.
+
 ## 2026-05-16 — 2023 data silently dropped: glob root-cause fixed
 
 User flipped `USE_2023` but Cell 4 reported only 3 (2024) JSON and **did
@@ -67,6 +115,8 @@ with weather, pushed artifacts (`8fca820`).
 - Ablation m1–m7 (logistic, test): m1 .500 / m2 stadium .504 / m3 weather
   **.436** / m4 strength .525 / m5 batter .429 / m6 env .467 / m7 full .455.
   **No feature group beats the home-field intercept.** Weather is the worst.
+  (NOTE: `m6` here = OLD scheme = stadium+weather "environment"; retired in
+  the 2026-05-17 entry above where m6 was redefined as the pitching group.)
 - Holdout tuned_rf .585 [.41,.74], tuned_xgb .589 [.42,.75] — CIs span
   random→good ⇒ noise. Run A's "0.656" was N=47 cherry-noise; the
   season-OOF + bootstrap CI (added precisely to catch this) confirm it.

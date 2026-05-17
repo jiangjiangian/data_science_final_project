@@ -8,6 +8,9 @@ Step 1.2-1.3:
     lever (rebas has 2023.0 + 2023.1 + 2024; NO 2022 release exists).
   - Re-aggregate batterBox SEPARATELY for home and away (fixes the
     home+away combined bug found in cde52470 cleaned CSV)
+  - Parse pitcherBox per side: team-staff totals (home_p*) + the
+    starting pitcher's line (home_sp_*, starter = order==1). step2
+    turns these into leak-free prior-game rolling pitching form.
   - Tag game_type (regular / challenge / series) from filename
   - Stadium normalize -> grouped levels (minor venues -> 其他)
   - Output canonical raw_games.csv
@@ -90,6 +93,15 @@ INDOOR_STADIUMS = {"大巨蛋"}
 BATTER_STAT_KEYS = ["PA", "AB", "R", "H", "RBI", "2B", "3B", "HR",
                     "BB", "IBB", "HBP", "SO", "SH", "SF", "GIDP", "SB", "CS", "E"]
 
+# pitcher-box stat columns (verified against real rebas 2023+2024 rows:
+# Cell-4b diagnostic showed every game-side has exactly ONE order==1 row;
+# fields IPOuts/NP/BF/H/HR/BB/IBB/HB/SO/R/ER). Staff = sum of all pitchers
+# on a side; starter = the order==1 row. step2 turns these into leak-free
+# PRIOR-game rolling form (we never use the current game's line for it).
+PITCHER_STAT_KEYS = ["IPOuts", "NP", "BF", "H", "HR", "BB",
+                     "IBB", "HB", "SO", "R", "ER"]
+STARTER_STAT_KEYS = ["IPOuts", "ER", "H", "HR", "BB", "SO", "BF", "NP"]
+
 
 def sum_inning_scores(arr):
     """Robust sum that skips non-numeric inning entries (e.g. 'X')."""
@@ -111,6 +123,41 @@ def aggregate_box(box, prefix):
                 out[f"{prefix}_{k}"] += int(v)
             except (ValueError, TypeError):
                 pass
+    return out
+
+
+def aggregate_pitchers(box, prefix):
+    """Team pitching-staff totals (sum of every pitcher that appeared).
+    'p' prefix keeps these distinct from batter columns (home_pH = hits
+    ALLOWED by home pitchers, vs home_H = hits BY home batters)."""
+    out = {f"{prefix}_p{k}": 0 for k in PITCHER_STAT_KEYS}
+    for pit in box:
+        for k in PITCHER_STAT_KEYS:
+            v = pit.get(k, 0) or 0
+            try:
+                out[f"{prefix}_p{k}"] += int(v)
+            except (ValueError, TypeError):
+                pass
+    return out
+
+
+def extract_starter(box, prefix):
+    """The starting pitcher's own line for THIS game = the order==1 row
+    (Cell-4b verified: exactly one per side, 0/1356 exceptions). Defensive
+    min-by-order so a malformed box still yields the earliest appearance.
+    sp_id (playerId) lets step2 roll each starter's OWN prior form."""
+    out = {f"{prefix}_sp_id": None}
+    out.update({f"{prefix}_sp_{k}": 0 for k in STARTER_STAT_KEYS})
+    if not box:
+        return out
+    sp = min(box, key=lambda r: r.get("order") if r.get("order") is not None else 999)
+    out[f"{prefix}_sp_id"] = sp.get("playerId")
+    for k in STARTER_STAT_KEYS:
+        v = sp.get(k, 0) or 0
+        try:
+            out[f"{prefix}_sp_{k}"] = int(v)
+        except (ValueError, TypeError):
+            pass
     return out
 
 
@@ -158,6 +205,8 @@ for game_type, path in SOURCES:
 
         home_box = g.get("homeBatterBox", []) or []
         away_box = g.get("awayBatterBox", []) or []
+        home_pbox = g.get("homePitcherBox", []) or []
+        away_pbox = g.get("awayPitcherBox", []) or []
 
         row = {
             "game_id":    make_game_id(g, game_type, seq),
@@ -182,9 +231,15 @@ for game_type, path in SOURCES:
             "is_tie":      int(h_total == a_total),
             "n_home_batters": len(home_box),
             "n_away_batters": len(away_box),
+            "n_home_pitchers": len(home_pbox),
+            "n_away_pitchers": len(away_pbox),
         }
         row.update(aggregate_box(home_box, "home"))
         row.update(aggregate_box(away_box, "away"))
+        row.update(aggregate_pitchers(home_pbox, "home"))
+        row.update(aggregate_pitchers(away_pbox, "away"))
+        row.update(extract_starter(home_pbox, "home"))
+        row.update(extract_starter(away_pbox, "away"))
         rows.append(row)
 
 df = pd.DataFrame(rows)
