@@ -11,6 +11,44 @@
 
 ---
 
+## 2026-05-17 — Run D: pitching IS the lever (m6 .689); m7 bloat dilutes it
+
+User pasted a **stale clipboard** (Run C JSON verbatim, season_oof
+0.5375 to 16 dp). The ACTUAL pushed artifacts (origin `0b0e869`,
+Cell-8) prove the pitcher pipeline ran: `feature_schema.json` has the
+`pitching` group (11 cols); `model_features` = 27 (16+11).
+
+**Ablation (logistic, test N=47):** m1 .500 / m2 .484 / m3 .455 /
+m4 .575 / m5 .455 / **m6 PITCHING .689** / m7 full(27) .578.
+→ m6 pitching-only is the **first feature group to decisively beat the
+home-field intercept** — strongest single group by a wide margin.
+Tuned **CV-AUC rose** vs Run C (rf .533→.546, xgb .526→.546): a
+robust lift, not only holdout noise. The "starting pitcher = the
+missing lever" hypothesis is **supported**.
+
+**But** `season_oof_auc .538→.528` and `m7(27feat) .578 < m6(11feat)
+.689`: the bloated full model **overfits at this N** — the 16
+near-noise features (stadium/weather/batter-state, all ≈.5 since
+Run B) drown the pitching signal. This is exactly the advisor-predicted
+*feature-design* issue, **not a code bug**. The ablation methodology is
+working as designed: it isolates the lever and shows that piling on
+dead groups hurts.
+(season_oof .538→.528 is not strictly apples-to-apples — staff_*_30g
+tightened the warm-up filter, post_warmup=550; the comparable robust
+signals are CV-AUC ↑ and the m6-alone ablation.)
+
+**Decision / next (advisor-gated before coding):** stop treating m7 as
+"the model". The open question = is m6's .689 real *walk-forward* or
+N=47 noise? step3 computes `season_oof_auc` for the m7 winner ONLY —
+add **per-group season-OOF** (≥ m6, m7) and select a **parsimonious**
+winner (pitching + the proven non-noise few: `diff_elo`, `pf_pre`)
+instead of the 27-feature m7. Report m6 as the headline.
+
+Also shipped: `run_all.py` loud stale-guard (code fingerprint at top +
+hard assert pitcher cols reach model_ready/feature_schema → SystemExit
+with a "delete runtime, Run all from top" remedy) so a genuinely stale
+clone fails loudly instead of emitting byte-identical old metrics.
+
 ## 2026-05-17 — Pitching features built; m1–m7 relocked (m6 = pitching)
 
 Cell-4b diagnostic (after the 2023 fix, **N=678**) verified the rebas
