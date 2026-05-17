@@ -1,0 +1,12 @@
+stadium_norm,stadium_raw,station_id,station_name,latitude,longitude,note
+樂天桃園,樂天桃園棒球場,C0C480,桃園,24.9429,121.2263,exposed; prevailing NW wind in cold months
+洲際,臺中市洲際棒球場,72T250,臺中,24.1903,120.6791,bowl shape; moderate wind
+天母,臺北市立天母棒球場,466920,臺北,25.1217,121.5324,humid; close to coast
+新莊,新北市立新莊棒球場,C0AC60,新莊,25.0460,121.4521,northerly wind off coast
+澄清湖,澄清湖棒球場,C0V250,鳳山,22.6738,120.3659,warm humid south
+臺南,臺南市立棒球場,467410,臺南,22.9669,120.2138,humid; southerly winds
+大巨蛋,臺北大巨蛋,466920,臺北,25.0396,121.5602,indoor; weather is climate context only (is_indoor=1)
+其他_嘉義,嘉義市立棒球場,467480,嘉義,23.4833,120.4525,inland hot summer
+其他_花蓮,花蓮縣立德興棒球場,466990,花蓮,23.9851,121.6092,coastal east
+其他_臺東,臺東棒球村第一棒球場,467660,臺東,22.7596,121.1500,coastal south-east
+其他_斗六,斗六棒球場,467480,嘉義,23.7106,120.5460,proxied via 嘉義 station (~25km west)
