@@ -201,6 +201,8 @@ def ts_oof_proba(estimator, X, y, splitter):
 # ============================================================================
 print("\n" + "=" * 70 + "\nABLATION m1..m7 (logistic; features vary)\n" + "=" * 70)
 ablation_rows = []
+ablation_oof = {}                       # leak-free walk-forward per group
+_ab_tscv = TimeSeriesSplit(n_splits=5)
 for mname, feats in FEATURE_GROUPS.items():
     feats = [f for f in feats if f in df.columns]
     for split_name, sdf in [("train", train), ("valid", valid), ("test", test)]:
@@ -218,11 +220,35 @@ for mname, feats in FEATURE_GROUPS.items():
         m = evaluate(y, p)
         m.update({"model": mname, "split": split_name, "note": note})
         ablation_rows.append(m)
+    # Per-group season-OOF: the ROBUST metric. The N=47 holdout AUC above
+    # has a CI ~[.45,.81] — useless for ranking groups. This refits the
+    # same logistic walk-forward over the whole post-warmup season so
+    # "does pitching (m6) actually beat the HFA baseline out-of-sample?"
+    # is answered by signal, not by a 47-game coin-flip. Cheap (logistic).
+    if mname == "m1" or not feats:
+        ablation_oof[mname] = float("nan")          # constant prior == chance
+    else:
+        oof_pipe = Pipeline([("pre", build_preprocessor(feats)),
+                             ("clf", LogisticRegression(max_iter=2000, C=1.0,
+                                                        solver="liblinear"))])
+        o = ts_oof_proba(oof_pipe, df[feats], df[TARGET], _ab_tscv)
+        k = ~np.isnan(o)
+        ablation_oof[mname] = (
+            roc_auc_score(df.loc[k, TARGET], o[k])
+            if df.loc[k, TARGET].nunique() > 1 else float("nan"))
 ablation = pd.DataFrame(ablation_rows)
+ablation["season_oof_auc"] = ablation["model"].map(ablation_oof)
 ablation.to_csv(EVAL / "results_ablation.csv", index=False)
-print(ablation[ablation.split == "test"]
-      .sort_values("auc", ascending=False)
-      [["model", "note", "n", "auc", "accuracy", "brier"]].to_string(index=False))
+_ab_test = (ablation[ablation.split == "test"]
+            .assign(season_oof=lambda d: d["model"].map(ablation_oof))
+            .sort_values("season_oof_auc", ascending=False)
+            [["model", "note", "n", "auc", "season_oof_auc", "brier"]])
+print("(ranked by season_oof_auc — the robust metric; 'auc' is the "
+      "noisy N=47 holdout)")
+print(_ab_test.to_string(index=False))
+print(f"\nm1 HFA-baseline season-OOF = chance (~0.50); "
+      f"m6 pitching season-OOF = {ablation_oof.get('m6', float('nan')):.3f} ; "
+      f"m7 full = {ablation_oof.get('m7', float('nan')):.3f}")
 
 # ============================================================================
 # 2. Algorithm comparison @ full m7 (features fixed; algorithm varies)
@@ -533,6 +559,8 @@ print(f"  feature_schema.json  ({len(m7)} features, "
     "threshold_opt": thr_opt,
     "holdout_at_0.5": m_05, "holdout_at_opt": m_opt,
     "season_oof_auc": float(oof_auc),
+    "ablation_season_oof": {k: (None if (v != v) else float(v))
+                            for k, v in ablation_oof.items()},
     "best_params": {k: v.best_params_ for k, v in searches.items()},
 }, indent=2, default=str), encoding="utf-8")
 print(f"\nfinal_metrics: {EVAL / '_final_metrics.json'}\nDONE.")

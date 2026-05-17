@@ -20,11 +20,14 @@ Cell-8) prove the pitcher pipeline ran: `feature_schema.json` has the
 
 **Ablation (logistic, test N=47):** m1 .500 / m2 .484 / m3 .455 /
 m4 .575 / m5 .455 / **m6 PITCHING .689** / m7 full(27) .578.
-→ m6 pitching-only is the **first feature group to decisively beat the
-home-field intercept** — strongest single group by a wide margin.
-Tuned **CV-AUC rose** vs Run C (rf .533→.546, xgb .526→.546): a
-robust lift, not only holdout noise. The "starting pitcher = the
-missing lever" hypothesis is **supported**.
+m6 shows the **largest holdout lift** of any group AND the tuned
+**CV-AUC moved the same direction** vs Run C (rf .533→.546,
+xgb .526→.546). BUT .689 is an **N=47 holdout** number — its bootstrap
+CI is ~as wide as tuned_rf's [.451,.806]; this is exactly the kind of
+claim the season-OOF + CI machinery exists to deflate. The honest
+statement: pitching is the **most promising lever so far**; whether the
+lift is real *walk-forward* is precisely what per-group season-OOF (the
+next step) must confirm — do NOT yet claim "pitching beats HFA".
 
 **But** `season_oof_auc .538→.528` and `m7(27feat) .578 < m6(11feat)
 .689`: the bloated full model **overfits at this N** — the 16
@@ -37,12 +40,23 @@ dead groups hurts.
 tightened the warm-up filter, post_warmup=550; the comparable robust
 signals are CV-AUC ↑ and the m6-alone ablation.)
 
-**Decision / next (advisor-gated before coding):** stop treating m7 as
-"the model". The open question = is m6's .689 real *walk-forward* or
-N=47 noise? step3 computes `season_oof_auc` for the m7 winner ONLY —
-add **per-group season-OOF** (≥ m6, m7) and select a **parsimonious**
-winner (pitching + the proven non-noise few: `diff_elo`, `pf_pre`)
-instead of the 27-feature m7. Report m6 as the headline.
+**Shipped this commit (advisor-framed):** step3 now computes
+**per-group season-OOF** for all m1–m7 (leak-free walk-forward,
+logistic, cheap) → `results_ablation.csv` + `_final_metrics.json:
+ablation_season_oof`. The ablation print is reranked by season-OOF
+(robust), not the N=47 holdout. Production artifacts deliberately
+**stay on the CV-AUC-over-m7 winner** — a parsimonious model is NOT
+front-run before per-group season-OOF confirms it (advisor: methodology
+integrity > headline). The clipboard scare was ruled out: pushed
+`_final_metrics.json` season_oof = 0.5282 (new), internally consistent
+with the same commit's ablation/schema.
+
+**Run E (next, decisive, one number):** user reruns → read
+`ablation_season_oof.m6` (pitching) vs `.m1`(≈chance) / `.m7`(full)
+in Cell 6. m6 ≫ 0.50 walk-forward → pitching is a real lever → next
+iteration makes the parsimonious model (pitching + `diff_elo`/`pf_pre`)
+the reported winner. m6 ≈ 0.50 → the .689 was N=47 noise and the
+clean negative conclusion holds. Either way the methodology answers it.
 
 Also shipped: `run_all.py` loud stale-guard (code fingerprint at top +
 hard assert pitcher cols reach model_ready/feature_schema → SystemExit
