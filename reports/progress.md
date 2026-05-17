@@ -11,6 +11,26 @@
 
 ---
 
+## 2026-05-17 — Final-report scaffold written (modelling phase closed)
+
+User chose "write the report skeleton first" (Shiny/Sub-Agent 6 after).
+Created **`reports/00_final_report.md`** — a richly-scaffolded capstone
+(每節：目的／核心論點句／要插入的確切圖表＋來源檔／內容要點＋寫稿
+TODO). It synthesises the existing numbered docs (`Results/01` goal
+charter, `reports/02a` data audit, `reports/03` pipeline+Run A–E) into
+one academic narrative. Spine: *the contribution is the methodology
+that twice deflated holdout noise, not a high AUC*. Key design choices
+baked in: report against the **pre-registered** charter thresholds
+(a/b/c — all honestly NOT met), `ablation_holdout_vs_oof.png` as the
+centrepiece, Vegas-58.2 % / Cui-Wharton / Entropy-24:288 as the
+"expected, not failure" anchor, and an explicit note that charter's old
+m1–m7 (m6=stadium+weather) was relocked to m6=pitching. All numbers
+reference durable pushed artifacts — scaffold says "do NOT recompute".
+
+**Next:** user expands core-sentence bullets into prose; then
+Sub-Agent 6 (R Shiny) — artifacts + figures already in place, narrative
+= methodology showcase, NOT a prediction product.
+
 ## 2026-05-17 — Run E: DECISIVE — pitching is NOT a lever; clean negative result
 
 Per-group season-OOF (the robust gate, leak-free walk-forward over 455
