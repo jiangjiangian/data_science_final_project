@@ -84,8 +84,9 @@
 > 壞假設、挖出資料品質地雷。
 
 - **目的**：用 EDA 結果驅動特徵設計與資料品質決策。
-- **核心論點句**：「探索性分析確認了 Park Factor 的球場差異、缺漏結構，
-  並驗證 rebas `pitcherBox` 的 schema，據此設計 leak-free 特徵。」
+- **核心論點句**：「探索性分析確認 Park Factor 的球場差異與缺漏結構、
+  驗證 rebas `pitcherBox` schema，並以 PCA／K-means 檢視特徵空間 ——
+  後兩者*獨立佐證*了賽前無訊號的負面結論。」
 - 內容要點：
   - Park Factor：澄清湖 ≈1.18（打者球場）、天母 ≈0.86（投手球場）等
     （`data/processed/park_factors.csv`）。
@@ -95,7 +96,17 @@
     `IPOuts/NP/BF/H/HR/BB/IBB/HB/SO/R/ER`；每位先發中位數 ~10 場 →
     決定「近 5 場滾動 + <3 場冷啟動回退」。
   - 打者狀態 30 場滾動分布；天氣 × 得分初探（後證實天氣最弱）。
-- 圖：`shap_summary.png`（步驟 5 用）；Park Factor 表。
+  - **PCA / K-means（notebook Cell 7b，純探索、不餵 m1–m7 模型）**：
+    - 天氣 4 變數 PCA：scree + PC1–PC2 散點依勝負上色 → **主成分空間
+      不分主隊勝負**（`eda_weather_pca.png`），與「天氣是最弱組
+      （season-OOF .524≈噪音）」一致。
+    - 以 `diff_*` 比賽輪廓 K-means（k=4，*文件化選擇、非調參*）：
+      找得到打法分群，但**各群主場勝率 ≈ 持平於整體基準**
+      （`eda_kmeans.png`）→ 結構存在於*打法*、不存在於*勝負*。
+    - **定位明確**：非監督探索、**不進模型**；從另一角度*獨立印證*
+      負面結論（不是用來提升 AUC）。
+- 圖：`eda_weather_pca.png`、`eda_kmeans.png`、`shap_summary.png`
+  （步驟 5）；Park Factor 表。
 
 ## 步驟 4 — 建立模型 Build the Model
 

@@ -11,6 +11,28 @@
 
 ---
 
+## 2026-05-17 — EDA cell added (weather PCA + game-profile K-means)
+
+User asked whether PCA/K-means were used; answer was no (none in the
+pipeline — domain-engineered supervised features, PCA would break m1–m7
+interpretability). User then asked to add an EDA cell anyway.
+
+- **`python/cpbl_pipeline.ipynb` Cell 7b** NEW (between step2 & step3):
+  weather 4-var PCA (scree + PC1–PC2 scatter by outcome) and K-means
+  (k=4, *documented choice, not tuned*) on `diff_*` game-profile
+  features. Framed strictly **exploratory — does NOT feed m1–m7**.
+  Crucially it *corroborates* the negative result: no outcome
+  separation in weather PC space; home-win rate ≈ flat across play-style
+  clusters → structure exists in *style*, not *outcome*.
+  Figs: `eda_weather_pca.png`, `eda_kmeans.png` (shown in Cell 9).
+- Builder change: `scripts/` is gone, so the generator now pulls the 4
+  step cells **from the committed notebook** by header tag (idempotent;
+  step logic verified faithful: ROOT=cwd, rolling_pitching,
+  ablation_oof_folds, *OpenData* glob all intact). 12 cells, all parse.
+- `reports/00_final_report.md` 步驟 3 updated to list PCA/K-means with
+  the honest "exploratory, corroborates negative result, not in model"
+  framing.
+
 ## 2026-05-17 — Python consolidated to ONE notebook; report → 5-step structure
 
 User: "Python 獨立一資料夾、只有一個 ipynb 含全流程；報告依
