@@ -30,10 +30,10 @@ post-warmup games) landed:
 **holdout m6 = .689 was N=47 noise** — the exact Run-A trap, caught a
 *second* time by the season-OOF + bootstrap-CI machinery. A 455-game
 OOF AUC has CI ≈±.05, so .463–.524 is **one band around .50 — no
-group is distinguishable from the HFA intercept**. m6's .463<.50 is
-either fold noise or small-N sign instability (added
-`ablation_season_oof_folds` to tell which next run); verdict identical
-either way. Not a pitching-encoding problem — single-game CPBL home-win
+group is distinguishable from the HFA intercept**. m6 per-fold OOF =
+[.441,.501,.406,.432,.584] → **high-variance noise, not a systematic
+sign-flip** (m4/m7 wobble the same way); the open question is now
+resolved and the verdict fully characterised. Not a pitching-encoding problem — single-game CPBL home-win
 is near-random pre-game at this N. Anchor: even **Vegas odds reach only
 ≈58.2 % on MLB** (academic ML 57–59.5 %) → ≈.50–.53 OOF on 2 CPBL
 seasons is the *expected* result, not a failure (cited in reports/03).

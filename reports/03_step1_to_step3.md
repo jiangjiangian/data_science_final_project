@@ -199,11 +199,14 @@ random→good and is pure noise at this size.
   the season-OOF + bootstrap-CI design. **No feature group is
   distinguishable from the HFA intercept out-of-sample** (a 455-game
   OOF AUC has CI ≈±.05, so .463–.524 is one band around .50). m6's
-  .463 sits *below* .50 — read the `ablation_season_oof_folds.m6`
-  fold vector: scattered around .50 ⇒ noise; systematically <.50 ⇒
-  small-N sign instability across the walk-forward folds. Either way
-  the verdict is identical: **no robust pre-game signal, pitching
-  included.** Consistent with the literature — even Vegas odds, the
+  per-fold OOF resolves the open question:
+  **[.441, .501, .406, .432, .584]** — *not* a systematic sign-flip
+  (that would be consistently <.50 every fold) but **high
+  fold-to-fold variance** (.18 range, mean ≈.47, no stable
+  direction). Same pattern in m4 [.52,.47,.49,.53,.53] and
+  m7 [.47,.47,.45,.50,.58]. Verdict, now fully characterised:
+  **no robust pre-game signal — every group is fold-unstable noise
+  around .50, pitching included.** Consistent with the literature — even Vegas odds, the
   single best pre-game predictor in pro sports with full market
   information, reach only ≈58.2 % accuracy on MLB; academic ML sits
   at 57–59.5 %. A 2-season CPBL model at ≈.50–.53 OOF is the
