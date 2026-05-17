@@ -11,6 +11,49 @@
 
 ---
 
+## 2026-05-17 — v2 leak-free copy notebook (paper-borrowed sabermetrics)
+
+User read Lo et al. 2025 (Appl. Sci. 15:7081 — same CPBL/Rebas data,
+reports AUC 0.97–0.98). Diagnosis: that figure is **target leakage** —
+they feed same-game box-score (R, wRC+, wOBA, FIP…) to predict that
+game's W/L; 1738 records = 859 games × 2 sides; no temporal lag; they
+self-cite a 0.57–0.69 ceiling. Their flaw is exactly our design's
+premise. User: make a **copy**, redo EDA/preprocess borrowing the
+paper's sabermetric menu but leak-free + prediction-oriented.
+
+Built `python/cpbl_pipeline_v2.ipynb` (19 cells; generator
+`jobs/bf766110/build_pipeline_v2_nb.py`, mirrors v1 idiom, pulls v1
+setup/ingest verbatim). Centrepiece = `Results/v2/figures/leakage_demo.png`:
+same-game wOBA (paper-style, random KFold) vs pre-game rolling wOBA,
+dual ROC — makes the 0.97 trap visual. STEP 3 (~70%): leak-free rolling
+sabermetrics (`*_wOBA_roll10`/`*_sp_FIP_l5`/Pythagenpat/rest, strictly
+pre-game), missingness/dist/corr/PCA, time-aware split. STEP 4 (~30%):
+paper's 5-model menu via walk-forward season-OOF (vs their random
+5-fold) + Stacking (LGBM+RF→LogReg on pure OOF).
+
+**Decisions / why:**
+- Copy, not rewrite: advisor + audit showed the pasted "start over"
+  architecture is 90% already built; real delta = matchup/Stacking +
+  the leakage visual. v1 notebook + `00_final_report.md` untouched
+  (`git diff` empty, independently verified).
+- **Output isolation**: v2 writes only `Results/v2/eval|figures/`
+  (`_final_metrics_v2.json`) — never clobbers the artifacts the locked
+  report cites. Verified: zero `Results/eval|figures` writes in code.
+- **Honest naming**: rolling wOBA is `*_wOBA_roll10`, never "wRC+"
+  (no park/league adj). Enforced by executable
+  `assert not any("wRC" in c for c in df.columns)`.
+- **Leakage guardrail in code** (not comment): per-model + stacking
+  `assert auc <= 0.70 … LEAKAGE SUSPECTED`. Paper's 0.97 trips it;
+  v1's worst fold 0.584 does not.
+- Expectation stated up-front: Stacking can't manufacture signal
+  absent from bases → ≈0.53, which *strengthens* the locked negative
+  result rather than overturning it. Modelling stays closed.
+
+**Next:** push v2 → user runs `Run all` on Colab (2024 data + heavy,
+not run locally) → paste `_final_metrics_v2.json` + `leakage_demo.png`
+back. If any model season-OOF >0.70 the assert fires → audit for
+same-game contamination before trusting it.
+
 ## 2026-05-17 — Final report written in full (submittable prose)
 
 User: "Just do it" → expanded the 5-step scaffold into a complete,
