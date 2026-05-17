@@ -19,10 +19,17 @@
 
 Execution environment: **Colab only**. Local Mac has no `pandas`; the
 Anthropic sandbox is blocked from Open-Meteo (HTTP 403). Colab has the full
-stack, reaches Open-Meteo, and can `git pull/push`.
+stack, reaches Open-Meteo.
 
-One-shot: `python3 scripts/run_all.py` (prints `git log -1` first so a stale
-checkout can never silently run old code again).
+> **2026-05-17 — implementation consolidated.** The pipeline is now ONE
+> self-contained notebook **`python/cpbl_pipeline.ipynb`** (step1 → step1b
+> → step2 → step3 inlined as cells; no repo clone, no subprocess, no `.py`
+> dependency — the stadium lookup is embedded). The old `scripts/*.py` +
+> `run_all.py` + root `colab_run.ipynb` were removed (git history keeps
+> them). Below, `scripts/stepN_*.py` are **historical names = notebook
+> cells**; the logic is byte-identical (the notebook is built by inlining
+> the verbatim script bodies). Run = open `python/cpbl_pipeline.ipynb` in
+> Colab → `Runtime → Run all`.
 
 ---
 
@@ -257,48 +264,30 @@ R Shiny does **zero computation** — it renders these:
 
 ---
 
-## How to reproduce (Colab — one shot)
+## How to reproduce (Colab — one shot, single notebook)
 
-```python
-REPO = "/content/data_science_final_project"   # adjust if your path differs
-import os, subprocess, sys
-os.chdir(REPO)
-subprocess.run(["git", "fetch", "origin"], check=True)
-subprocess.run(["git", "reset", "--hard",
-                "origin/claude/setup-main-agent-BhYTE"], check=True)
-print(subprocess.run(["git", "log", "-1", "--oneline"],
-                      capture_output=True, text=True).stdout)   # verify HEAD
-# rebas zips must already be unzipped under data/raw/  (2024 [+ optional 2023])
-subprocess.run([sys.executable, "scripts/run_all.py"], check=True)
-# push regenerated artifacts back
-subprocess.run(["git", "add", "-f",
-                "Results/eval", "Results/figures"], check=False)
-# (predictions.csv / feature_schema.json / _final_metrics.json all live
-#  under Results/eval/, so the line above already covers them)
-subprocess.run(["git", "commit", "-m", "data: Run B artifacts (weather)"],
-               check=False)
-subprocess.run(["git", "push", "origin",
-                "HEAD:claude/setup-main-agent-BhYTE"], check=False)
-```
+Open **`python/cpbl_pipeline.ipynb`** in Colab → `Runtime → Run all`.
+That's it: no repo clone, no `git pull`, no `subprocess`. All four steps
+are inlined as cells (built by embedding the verbatim script bodies, so
+the logic is byte-identical to the history in §1–§3 below). Cell 3
+downloads rebas (`USE_2023=True`), Cell 4 prints the pitcher diagnostic,
+Cells 5–8 run step1→step1b→step2→step3, Cell 9 prints
+`_final_metrics.json` + the four figures, Cell 10 optionally
+zips/pushes the artifacts.
 
-Local R mirrors all live under `R/` (`R/load_rebas_data.R`,
-`R/compute_features.R`, `R/03_build_models.R`) — kept for cross-checking
-only; `scripts/` is Python-only and authoritative.
+Local R mirrors live under `R/` (reference cross-checking only, not the
+execution path).
 
 ---
 
-## File inventory (this round)
+## File inventory (current)
 
 ```
-scripts/
-  step1_build_raw_games.py    # multi-season auto-discover → raw_games.csv
-  step1b_fetch_weather.py     # NEW — Open-Meteo, stdlib, no key
-  step2_features.py           # auto-uses weather csv when present
-  step3_models.py             # m1..m7 + algo + CV-winner + isotonic + Shiny artifacts
-  run_all.py                  # NEW — one-shot orchestrator + stale-pull guard
-R/  load_rebas_data.R · compute_features.R · fetch_cwa.R · elo_pythag.R   # reference mirrors
-data/raw/_lookup/stadium_to_station.csv   # + lat/lon
-reports/03_step1_to_step3.md  # this file
+python/cpbl_pipeline.ipynb    # THE pipeline — one self-contained notebook
+R/  ... .R                    # reference mirrors only (not executed)
+data/raw/_lookup/stadium_to_station.csv   # canonical geo (also embedded in nb)
+reports/00_final_report.md    # capstone report (5-step lifecycle)
+reports/02a_cde52470_data_audit.md · 03_step1_to_step3.md · progress.md
 ```
 
 Gitignored (regenerated in Colab, force-added when curated):
@@ -307,5 +296,6 @@ Gitignored (regenerated in Colab, force-added when curated):
 
 ---
 
-*Step 1 / 1b / 2 / 3 — Python canonical. Run B (weather) regenerates on the
-next Colab `run_all.py`; R Shiny consumes the precomputed artifacts.*
+*Step 1 / 1b / 2 / 3 — Python canonical, consolidated into the single
+notebook `python/cpbl_pipeline.ipynb`. R Shiny consumes the precomputed
+artifacts.*

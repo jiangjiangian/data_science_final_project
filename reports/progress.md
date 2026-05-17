@@ -11,6 +11,35 @@
 
 ---
 
+## 2026-05-17 — Python consolidated to ONE notebook; report → 5-step structure
+
+User: "Python 獨立一資料夾、只有一個 ipynb 含全流程；報告依
+`.claude/agents/` 前五步驟撰寫."
+
+- **`python/cpbl_pipeline.ipynb`** NEW — the entire pipeline in ONE
+  self-contained notebook. Built by a generator that reads the REAL
+  worktree scripts and inlines their bodies *verbatim* (only: strip
+  module docstring; `ROOT=__file__` → `Path.cwd()`), so the logic is
+  byte-identical to the tested/pushed scripts — zero manual-port risk.
+  No repo clone, no subprocess, no `.py` dependency (stadium lookup
+  embedded as a string). 11 cells; verified all parse + faithful +
+  self-contained + step cells carry `ROOT=Path.cwd()` and no `__file__`.
+- **Removed** (git history preserves): `scripts/step1/1b/2/3.py`,
+  `scripts/run_all.py`, `scripts/eda_cde52470_audit.py`, root
+  `colab_run.ipynb`. `scripts/` gone → Python lives ONLY in `python/`;
+  `R/` untouched. The run_all stale-guard is now moot (no clone → no
+  stale-code path; the notebook *is* the code).
+- **`reports/00_final_report.md`** rewritten to the DS-lifecycle
+  5-step spine (定義目標 / 獲取資料 / 探索資料 / 建立模型 / 評估模型)
+  + 結論 / 部署 / 可重現性, each section = agent epigraph + topic
+  sentence + exact artifacts + bullets + TODO. Honest pivot note
+  (charter planned R/tidymodels → Python; old m6 relocked to pitching).
+- `reports/03` §0 + reproduce + inventory updated to the single-notebook
+  reality (script names now flagged as historical = notebook cells).
+
+**Next:** user expands report prose; then Sub-Agent 6 (R Shiny) over
+the existing artifacts. Modelling stays closed (negative result final).
+
 ## 2026-05-17 — Final-report scaffold written (modelling phase closed)
 
 User chose "write the report skeleton first" (Shiny/Sub-Agent 6 after).
