@@ -26,7 +26,7 @@ CPBL 例行賽主隊是否獲勝？** 我們在兩季（2023–2024，678 場）
 
 結果是一個**乾淨且可辯護的負面結論**：在嚴謹的樣本外評估下，**沒有任何
 特徵組能與「純主場優勢」區分**；各組 season-OOF AUC 全部落在 0.50 附近
-一個約 ±0.05 的帶內（圖 1）。最具啟發性的是投手組：它在 47 場 holdout
+一個約 ±0.05 的帶內（圖 4）。最具啟發性的是投手組：它在 47 場 holdout
 上達到看似亮眼的 AUC 0.689，卻在 leak-free walk-forward 上跌至 0.463——
 這正是本管線設計要捕捉的小樣本假訊號，且是繼 Run A 之後**第二次**被同
 一套方法論自動戳破。
@@ -163,17 +163,35 @@ Cell 4）直接驗證 rebas `pitcherBox` 的真實結構，而非僅信任文件
 分析，**明確不餵入 m1–m7 模型**：
 
 - **天氣 PCA**：對溫度、濕度、風速、降水四變數標準化後做主成分分析
-  （scree 圖 ＋ PC1–PC2 散點依勝負上色，`eda_weather_pca.png`）。
-  主成分空間中**主隊勝／負兩群完全重疊、無可分性**，與後續「天氣是
-  最弱特徵組（season-OOF ≈0.524，與雜訊無異）」的結論一致。
+  （scree 圖 ＋ PC1–PC2 散點依勝負上色）。主成分空間中**主隊勝／負
+  兩群完全重疊、無可分性**，與後續「天氣是最弱特徵組（season-OOF
+  ≈0.524，與雜訊無異）」的結論一致。（此 v1 探索圖未納入本交付圖集；
+  其結論由下方 v2 leak-free 特徵 EDA 圖以更廣的特徵集獨立重現。）
 - **比賽輪廓 K-means**：對所有 `diff_*` 比賽輪廓特徵標準化後分群
-  （k=4，為**文件化的探索選擇、非調參結果**；`eda_kmeans.png`）。
-  分群確實找到不同的「打法輪廓」，但**各群的主隊勝率幾乎持平於整體
-  基準線**——亦即結構存在於*打法*之中，卻不存在於*勝負*之中。
+  （k=4，為**文件化的探索選擇、非調參結果**）。分群確實找到不同的
+  「打法輪廓」，但**各群的主隊勝率幾乎持平於整體基準線**——亦即結構
+  存在於*打法*之中，卻不存在於*勝負*之中。（圖未納入交付集，結論記於
+  `reports/progress.md`。）
 
 這兩項分析的價值在於：它們以非監督方法，從與監督式消融完全不同的
 角度，**獨立印證了「賽前無可預測訊號」這個負面結論**，而非被用來
 提升 AUC。
+
+### 3.4 v2 leak-free 特徵 EDA（交付圖集）
+
+下列三張為 v2 管線（`python/cpbl_pipeline_v2.ipynb` STEP 3c）對
+**嚴格賽前 leak-free 特徵**所做的 EDA，取代未交付的 v1 探索圖、
+並以更廣特徵集重現同一結論：
+
+![圖 1：leak-free 特徵分布總覽](../Results/v2/figures/eda_distributions.png)
+
+![圖 2：leak-free 特徵相關矩陣](../Results/v2/figures/eda_corr.png)
+
+![圖 3：leak-free 特徵 PCA（PC1–PC2 依勝負上色，兩群重疊不可分）](../Results/v2/figures/eda_pca.png)
+
+PCA（圖 3）中主隊勝／負兩群在主成分空間**完全重疊**——結構存在於
+特徵之間（相關矩陣，圖 2）卻不存在於與勝負的關係之中，與 §5 的
+監督式負面結論完全一致。
 
 ---
 
@@ -265,7 +283,7 @@ Run C 顯示「修復 2023 資料、樣本翻倍」確實帶來小幅但真實�
 一個真實因子，故投手工作值得在更大的 N 上嘗試。Run D 加入投手後，
 m6 在 47 場 holdout 上達 0.689——這是全專案最誘人的數字。
 
-### 5.2 決定性證據：每組 season-OOF（圖 1）
+### 5.2 決定性證據：每組 season-OOF（圖 4）
 
 關鍵問題只有一個：**m6 投手的 0.689 是真實的 walk-forward 訊號，還是
 47 場的雜訊？** 每組 leak-free season-OOF（455 場）給出明確答案：
@@ -292,7 +310,9 @@ Run A（RF 0.656）的同一個陷阱，被同一套 season-OOF＋bootstrap CI
 與 m7 `[.47,.47,.45,.50,.58]` 呈現同樣的折間亂跳。負面結論至此被
 完整刻畫。
 
-> **圖 1（報告核心）`Results/figures/ablation_holdout_vs_oof.png`**：
+![圖 4：各特徵組 47 場 holdout AUC（橘）對比 leak-free season-OOF AUC（藍）](../Results/figures/ablation_holdout_vs_oof.png)
+
+> **圖 4（報告核心）`Results/figures/ablation_holdout_vs_oof.png`**：
 > 各特徵組在 47 場 holdout AUC（橘）對比 leak-free season-OOF AUC
 > （藍）。m6 投手橘柱高聳至 0.69、藍柱卻沉至 0.50 線下的 0.46；所有
 > 藍柱緊貼 0.50。這張圖本身就是本研究的論點：**小樣本 holdout 排名
@@ -304,8 +324,13 @@ Run A（RF 0.656）的同一個陷阱，被同一套 season-OOF＋bootstrap CI
 holdout AUC 0.640、95% bootstrap CI `[0.451, 0.806]`、season-OOF
 0.528。isotonic 校準在 holdout 上反而提高 Brier，故依設計**服務未
 校準（raw）機率**（此即第 1 節強調校準的決策邏輯——寧可誠實服務
-raw，也不採用會惡化的校準）。輔助圖：`model_comparison.png`、
-`calibration.png`、`shap_summary.png`。
+raw，也不採用會惡化的校準）。
+
+![圖 5：演算法比較（holdout AUC）](../Results/figures/model_comparison.png)
+
+![圖 6：校準曲線（raw vs isotonic）](../Results/figures/calibration.png)
+
+![圖 7：贏家模型 SHAP 特徵重要度](../Results/figures/shap_summary.png)
 
 **生產模型刻意維持「CV-AUC over m7」的贏家，未因 m6 的 holdout 數字
 而切換**——在每組 season-OOF 確認之前不前置任何精簡模型，方法論
@@ -326,13 +351,85 @@ holdout 上看似達成 (a)，但 season-OOF 0.463 推翻之——**這恰恰證
 charter 事前指定 bootstrap／DeLong 等嚴謹檢定的必要性，方法論做到
 了它該做的事**。
 
+### 5.5 延伸驗證：leak-free 重現 Lo et al. 2025 與 pitch-level 推翻嘗試（v2）
+
+§5.4 的負面結論成立於 **box-score 衍生特徵**。一篇同聯盟、同 rebas
+資料的同行評審論文（Lo et al., *Appl. Sci.* 15:7081, 2025）報告
+AUC 0.97–0.98——但其特徵含**同場**已實現的 box-score（R、wRC+、
+wOBA…）去預測該場勝負，屬目標洩漏（target leakage）。v2 管線
+（`python/cpbl_pipeline_v2.ipynb`）以**嚴格賽前、leak-free** 方式
+重現其特徵菜單，並追加 rebas 中尚未開採的 **pitch-by-pitch**（PAList
+逐球：球種／球速／進壘點／左右投打／擊球品質）作為最後一搏的推翻
+嘗試。推翻規則於執行前**預先登記**：「(ii) > (i) **且** 兩者
+95% bootstrap CI 不相交」。
+
+**頭條方法論貢獻——洩漏的可視化證明。** 在同一份資料上，以論文的
+隨機 5-fold 設計：
+
+| wOBA 特徵 | CV AUC | N |
+|---|---|---|
+| **同場**（論文式洩漏） | **0.933** | 665 |
+| **賽前滾動**（leak-free） | **0.457** | 654 |
+
+![圖 8（核心貢獻）：同場 wOBA（洩漏，AUC 0.93）vs 賽前滾動 wOBA（leak-free，AUC 0.46）雙 ROC](../Results/v2/figures/leakage_demo.png)
+
+同資料、同聯盟，**實證重現了論文 ≈0.97 完全來自同場污染**，而方法
+論乾淨的賽前版本崩回擲銅板。此圖獨立於推翻問題，是本研究最不含糊
+的方法論貢獻。
+
+**pitch-level 推翻消融（saber-only vs ＋pitch-level，walk-forward
+season-OOF，配對 bootstrap 95% CI，N=380 配對列）：**
+
+| 模型 | saber | ＋pitch | Δ | CI 不相交？ |
+|---|---|---|---|---|
+| LogisticRegression | 0.483 | 0.517 | +0.034 | 否 |
+| DecisionTree | 0.484 | 0.535 | +0.051 | 否 |
+| RandomForest | 0.492 | **0.546** | +0.055 | 否 |
+| XGBoost | 0.467 | 0.536 | +0.068 | 否 |
+| LightGBM | 0.463 | 0.527 | +0.064 | 否 |
+| Stacking(LGBM+RF→LR) | 0.482 | 0.450 | −0.032 | 否 |
+
+![圖 9：pitch-level 推翻消融——season-OOF AUC 配對 bootstrap 95% CI](../Results/v2/figures/pitch_level_ablation.png)
+
+**裁決（依預先登記規則）：不算正式推翻。** `overturn_any_model =
+false`——每個模型的配對 95% CI 皆重疊（例 RF：saber [0.432, 0.551]
+vs ＋pitch [0.485, 0.604]）。看到結果後不移動球門：若因「5/5 皆升」
+改判推翻，即是事後合理化，正是本研究批判該論文之處。
+
+**但方向性是真資訊。** 5 個 base model **全部**上升、幅度一致
+（+0.034～0.068），把 saber-only 的**次於擲硬幣**（≈0.47）拉升至
+**高於擲硬幣**（≈0.53）；最佳的 RandomForest 達 0.546、CI 上緣
+0.604，**恰觸及運動預測 leak-free 文獻天花板帶（0.57–0.60）的下緣**。
+Stacking 退步（0.482→0.450）正是事前預測的「小 meta 樣本過擬合」
+如期落地，反向再次佐證 §4.3「此 N 不疊額外層」的規則。
+
+**為何 CI 必然重疊——這是資料量的硬上限，不是「補資料就過」。**
+配對樣本僅 N=380，AUC 差的標準誤約 1/√380 ≈ 0.05，恰等於觀察到的
+效果量；效果**設計上就卡在可偵測邊緣**。rebas 無 2025／2026
+release，**沒有更多資料可補**——這不是再跑一次就會越過門檻的問題。
+
+**校準後的中間結論**：§5.4「除主場優勢外無可預測訊號」的論斷，**在
+pitch-level 上下得太滿**。誠實的表述是：**在預先登記門檻（配對 CI
+不相交）下未達正式 pitch-level 推翻；但 5/5 base model 方向一致提升
+約 +0.05、最佳模型觸及文獻天花板下緣，屬具提示性但在 N=380 下統計
+不確定的正向訊號。** box-score 的「無訊號」不延伸為「pitch-level
+亦無訊號」，亦不構成推翻——真相在中間。已記錄之非阻斷小 caveat：
+B2 平台分割的 `opp_L_frac` 混合權重採用實際打席左右手比例（而非
+賽前公布先發打序），洩漏量可忽略（僅為兩個嚴格賽前分割之間的權重）。
+
 ---
 
 ## 6. 結論
 
-在現有公開資料與兩季規模下，**CPBL 單場主隊勝負於賽前接近不可預測**；
-本專案的可交付成果，是一套**能正確揭露此事實**的嚴謹評估方法論，而非
-一個被雜訊美化的預測數字。
+在現有公開資料與兩季規模下，**CPBL 單場主隊勝負於賽前以 box-score
+特徵接近不可預測**；本專案最不含糊的可交付成果，是一套能正確揭露
+此事實的嚴謹評估方法論，以及**圖 8 的洩漏可視化證明**——在與
+Lo et al. (2025) 同聯盟同資料上，實證該論文 AUC 0.97 全來自同場
+目標洩漏，leak-free 版崩回擲銅板。此貢獻獨立於任何預測數字。
+須誠實補充（§5.5）：追加 pitch-by-pitch 特徵後，5/5 base model
+方向一致提升約 +0.05，最佳模型觸及文獻天花板下緣——**未達預先
+登記的正式推翻門檻（配對 CI 不相交），但「全然不可預測」的論斷
+在 pitch-level 上下得過滿；真相是「具提示性但統計不確定」。**
 
 此負面結果是**預期內、且與文獻一致**的，並非專案失敗。運動單場結果
 本質高變異：即使是職業運動最強的賽前預測者——Las Vegas 盤口，握有
@@ -343,10 +440,12 @@ charter 事前指定 bootstrap／DeLong 等嚴謹檢定的必要性，方法論�
 
 方法論層面的教訓最具教學價值：本管線在 Run A（RF holdout 0.656）與
 Run D（投手 holdout 0.689）**兩次**偵測並戳破誘人的小樣本假訊號，
-0.689→0.463 的崩塌（圖 1）是「為何不可用小樣本 holdout 排名」的具體
-活教材。據此，我們**停止任何進一步的特徵或調參工作**（在此 N 下那
-等同擬合雜訊）；生產模型誠實地連同其寬信賴區間與負面消融一併呈現，
-絕不單獨報告 0.640 此一數字。
+0.689→0.463 的崩塌（圖 4）是「為何不可用小樣本 holdout 排名」的具體
+活教材。據此，box-score 層級的特徵與調參工作**就此關閉**（在此 N 下
+那等同擬合雜訊）；唯一有紀律的延伸是 §5.5 的 pitch-level 推翻消融
+——一次預先登記、leak-free 的證偽嘗試，結果方向性正面但未達正式
+門檻，並順帶產出圖 8 的洩漏證明。生產模型誠實地連同其寬信賴區間與
+負面消融一併呈現，絕不單獨報告 0.640 此一數字。
 
 **限制**：僅兩季樣本；rebas 不提供賽前 probable starter（投手特徵
 僅能用於回溯評分，無法支援真正的「今日」推論）；CPBL 樣本量遠小於
@@ -360,7 +459,7 @@ MLB。
 `models/best_model.joblib`、`Results/eval/feature_schema.json` 與六張
 圖。R Shiny 將**零計算、僅渲染**這些產出物（不使用 reticulate，
 部署安全）。**落地文案定調**：此儀表板*不是*一個預測產品，而是一個
-**方法論展示**——以圖 1 的 holdout 陷阱為核心，誠實呈現「walk-forward
+**方法論展示**——以圖 4 的 holdout 陷阱為核心，誠實呈現「walk-forward
 AUC ≈ 0.53、附信賴區間」，避免任何「精準預測」的措辭。此步驟由
 `@shiny-deployer`（Sub-Agent 6）執行。
 
@@ -380,13 +479,21 @@ AUC ≈ 0.53、附信賴區間」，避免任何「精準預測」的措辭。�
 - 完整決策歷程（含每個 Run 的數字與理由）記於
   `reports/progress.md`（最新在上）。R 參考鏡像保留於 `R/`（非執行
   路徑）。
-- 轉 PDF：`pandoc reports/00_final_report.md -o report.pdf`
-  （需安裝中文字型，如 `--pdf-engine=xelatex -V CJKmainfont=...`）。
+- **自含交件**：`python3 reports/build_report_html.py` 產生
+  `reports/00_final_report.html`——所有 9 張圖以 base64 內聯，單檔、
+  UTF-8、中文安全（不需 pandoc／LaTeX／CJK 字型），瀏覽器開啟即可
+  列印成 PDF。圖檔相對路徑 `../Results/...` 於原始 Markdown 亦可正常
+  渲染。
 
 ---
 
 ## 參考文獻
 
+- T.-C. Lo, C.-Y. Lee, C.-L. Chen, T.-Y. Hsieh, C.-H. Chen, Y.-K. Lin,
+  *Application of Machine Learning Models for Baseball Outcome
+  Prediction*, **Applied Sciences** 15(13):7081 (2025).
+  <https://www.mdpi.com/2076-3417/15/13/7081> ——同聯盟同資料；其報告
+  之 AUC 0.97 經本研究 §5.5 證實源自同場目標洩漏。
 - A. Cui, *Forecasting Outcomes of Major League Baseball Games Using
   Machine Learning*, Wharton (2020).
   <https://fisher.wharton.upenn.edu/wp-content/uploads/2020/09/Thesis_Andrew-Cui.pdf>
@@ -401,13 +508,20 @@ AUC ≈ 0.53、附信賴區間」，避免任何「精準預測」的措辭。�
 
 ## 附錄：圖表清單
 
-| 檔案 | 用途 |
+| 圖 | 檔案 | 用途 |
+|---|---|---|
+| 圖 4（核心） | `Results/figures/ablation_holdout_vs_oof.png` | holdout vs season-OOF 各組對比 |
+| 圖 5 | `Results/figures/model_comparison.png` | 演算法比較（holdout AUC）|
+| 圖 6 | `Results/figures/calibration.png` | 校準曲線（raw vs isotonic）|
+| 圖 7 | `Results/figures/shap_summary.png` | 贏家模型 SHAP 特徵重要度 |
+| 圖 1 | `Results/v2/figures/eda_distributions.png` | leak-free 特徵分布總覽 |
+| 圖 2 | `Results/v2/figures/eda_corr.png` | leak-free 特徵相關矩陣 |
+| 圖 3 | `Results/v2/figures/eda_pca.png` | leak-free 特徵 PCA，勝負不可分 |
+| **圖 8（核心貢獻）** | `Results/v2/figures/leakage_demo.png` | 同場 vs 賽前 wOBA 雙 ROC（洩漏證明）|
+| 圖 9 | `Results/v2/figures/pitch_level_ablation.png` | pitch-level 推翻消融＋配對 CI |
+
+| 資料來源 | 用途 |
 |---|---|
-| `Results/figures/ablation_holdout_vs_oof.png` | **圖 1（核心）** holdout vs season-OOF 各組對比 |
-| `Results/figures/eda_weather_pca.png` | 天氣 PCA scree ＋ PC 空間勝負不可分 |
-| `Results/figures/eda_kmeans.png` | 打法 K-means 分群＋各群勝率持平 |
-| `Results/figures/model_comparison.png` | 演算法比較（holdout AUC）|
-| `Results/figures/calibration.png` | 校準曲線（raw vs calibrated）|
-| `Results/figures/shap_summary.png` | 贏家模型 SHAP 特徵重要度 |
-| `Results/eval/_final_metrics.json` | 所有量化數字之單一真實來源 |
+| `Results/eval/_final_metrics.json` | v1 所有量化數字之單一真實來源 |
 | `Results/eval/results_ablation.csv` | m1–m7 各組 holdout ＋ season-OOF |
+| `Results/v2/eval/_final_metrics_v2.json` | v2 洩漏 demo ＋ pitch-level 消融數字來源 |

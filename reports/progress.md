@@ -11,6 +11,69 @@
 
 ---
 
+## 2026-05-17 — Pitch-level verdict + report finalised (embedded HTML)
+
+Colab v2 run returned (origin `4b18999`, Colab pushed via a corrected
+cell — the generated push cell cloned the local-only `…-fix2` worktree
+branch which doesn't exist on origin → exit 128; **fixed at source**:
+generator + regenerated `cpbl_pipeline_v2.ipynb` cell 20 → `BR =
+"claude/setup-main-agent-BhYTE"`, surgical 1-cell diff, 12/12 compile).
+
+**Decisive pitch-level result (advisor-framed, not goalpost-moved):**
+- Leakage demo: same-game wOBA AUC **0.933** vs pre-game rolling
+  **0.457** (paper's random KFold). Reproduces Lo et al. 2025's ≈0.97
+  as pure same-game contamination on identical data → the standalone
+  publishable headline, independent of the overturn question.
+- Overturn ablation: saber-only ≈0.47 (reproduces v1 locked negative);
+  +pitch lifts **5/5 base models** +0.034–0.068 (LR .517 DT .535
+  RF **.546** XGB .536 LGBM .527); Stacking degraded .482→.450
+  (predicted tiny-meta overfit, confirmed).
+- **Verdict by the pre-registered rule: NOT a formal overturn.**
+  `overturn_any_model=false`; every paired 95% CI overlaps
+  (RF saber [.432,.551] vs +pitch [.485,.604]). N=380 paired,
+  SE(ΔAUC)≈1/√380≈0.05 = the effect size → CIs necessarily overlap;
+  rebas has no 2025/26, **no more data exists** — not a "rerun" fix.
+- Honest middle (folded into report §5.5/§6): box-score "no signal"
+  was stated too confidently; pitch-level is consistent-but-
+  statistically-inconclusive; neither overturn nor "negative extends".
+
+**Report finalised** (`reports/00_final_report.md`, 527L): added §3.4
+(v2 EDA figs), §5.5 (full pitch-level story), softened §6, added
+Lo et al. 2025 ref, fixed 2 dead v1-EDA figure refs, rebuilt appendix.
+**All 9 figures embedded** (`![]()`), **renumbered to document order**
+(atomic placeholder remap, 27 refs, captions+in-text all consistent
+1→9). Self-contained HTML: `reports/build_report_html.py` (stdlib-only
+MD→HTML, base64-inlines every image; no pandoc/LaTeX/CJK-font; project
+code-style "stdlib where feasible") → `00_final_report.html` 1.09 MB,
+9/9 imgs, 0 missing. `.html` stays gitignored per architecture.md path
+policy; builder committed (reproducible), HTML delivered to user
+directly.
+
+**Decisions / why:**
+- Respected the pre-registered overturn rule even though the user
+  wanted overturn — they pushed back on *premature closure*, not on
+  pre-registration discipline; honoring the rule when the result is
+  close *is* respecting that. Advisor explicitly warned against the
+  opposite over-correction (declaring overturn because 5/5 lifted =
+  post-hoc sign test = the same goalpost-shift we criticised in Lo).
+- Renumbered figures to document order: 圖 5–7 physically preceding
+  圖 1 is unacceptable in a submittable report; the "圖 1 = core trap"
+  rhetoric was rehomed onto 圖 4 (ablation) / 圖 8 (leakage) without
+  loss — the argument, not the literal number, is what matters.
+
+**CLAUDE.md improver skill** (user-invoked): full quality report +
+4 approved diffs produced, but **sandbox-blocked** — `CLAUDE.md` +
+`.claude/rules/*` are local-only files that exist only in the main
+checkout (not copied into worktrees); the isolated bg session can't
+edit outside the worktree and won't backdoor it. Patch handed to the
+user to apply from a non-worktree session (modeling.md status banner,
+architecture.md notebook block, CLAUDE.md run/worktree lines,
+git-policy.md worktree generalisation).
+
+**Next:** Sub-Agent 6 (R Shiny) over the v1 precompute contract +
+the v2 figures, framed as the methodology showcase (圖 8 leakage trap
++ honest ≈0.53-with-CI), per report §7. Modelling stays closed.
+
 ## 2026-05-17 — v2 STEP 3e: pitch-level overturn attempt
 
 User pushed back hard: the ≈0.53 negative result was being framed as
