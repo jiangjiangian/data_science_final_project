@@ -11,6 +11,28 @@
 
 ---
 
+## 2026-05-17 — Final report written in full (submittable prose)
+
+User: "Just do it" → expanded the 5-step scaffold into a complete,
+submittable academic report (`reports/00_final_report.md`). Every
+section now flowing zh-TW prose: 摘要 → 定義目標 → 獲取資料 → 探索資料
+→ 建立模型 → 評估模型 → 結論 → 部署 → 可重現性 → 參考文獻 → 附錄.
+Includes 3 result tables (pre-registered criteria, Run A–E evolution,
+per-group season-OOF), the threshold-vs-result reconciliation, figure 1
+caption, the honest R→Python + m6-relock disclosure, PCA/K-means as
+negative-result corroboration, Vegas-58.2%/lit anchor.
+
+**All quantitative numbers cross-checked against the pushed
+`_final_metrics.json` / `feature_schema.json`** (rf/raw, CV-AUC .546,
+holdout .640 CI[.451,.806], season-OOF .528, thr .56, ablation
+m2 .512/m3 .524/m6 .463/m7 .495, m6 folds [.441,.501,.406,.432,.584],
+N 406/97/47/550) — exact match, no drift. Run A/B/C figures cited from
+the durable progress log.
+
+Report is **submittable as Markdown**; pandoc one-liner noted for PDF.
+Modelling stays closed (negative result final). Next = Sub-Agent 6
+(R Shiny) over the existing precompute artifacts.
+
 ## 2026-05-17 — EDA cell added (weather PCA + game-profile K-means)
 
 User asked whether PCA/K-means were used; answer was no (none in the

@@ -1,229 +1,413 @@
-# CPBL 主客場勝率預測 — 期末報告（骨架）
+# CPBL 主客場勝率預測 — 期末報告
 
-> **狀態：SCAFFOLD。** 結構依資料科學生命週期五步驟（`.claude/agents/`
-> 01–05）：**定義目標 → 獲取資料 → 探索資料 → 建立模型 → 評估模型**，
-> 末接結論／部署／可重現性。每節給：①該步驟回答的問題 ②可直接當段落
-> 首句的核心論點句 ③要插入的確切圖／表／數字＋來源檔 ④內容要點。
-> 把要點展開成散文即成稿。
->
-> **數字全部引用已定案、已推上遠端的 artifacts —— 不要重算、不要改。**
-> 對不上＝哪裡 stale，回頭查 `reports/progress.md`。
->
-> 詳細技術細節：`Results/01_define_the_goal.md`（charter）、
+**課程**：資料科學（NCCU，114-2）　**任務**：二元分類 `is_home_win`
+**資料**：野球革命 rebas open data（2023–2024）＋ Open-Meteo　**實作**：
+Python（單一自含 notebook `python/cpbl_pipeline.ipynb`）
+
+> 本報告依資料科學生命週期五步驟組織：**定義目標 → 獲取資料 → 探索資料
+> → 建立模型 → 評估模型**，末接結論、部署與可重現性。所有量化數字均
+> 取自已定案、版本控管的產出物（`Results/eval/_final_metrics.json`、
+> `results_*.csv`、`reports/03_step1_to_step3.md`），未於撰稿時重算。
+> 技術細節索引：`Results/01_define_the_goal.md`（charter）、
 > `reports/02a_cde52470_data_audit.md`（資料審計）、
-> `reports/03_step1_to_step3.md`（pipeline ＋ Run A–E 完整數據）。
->
-> **全文脊椎（一句話）：** 本專案的貢獻不是高 AUC，而是一套*時序嚴謹
-> 的評估方法論*，它**兩次**自動偵測並戳破了 N=47 holdout 上的假訊號
-> —— 一個被正確揭露的誠實負面結果，就是可發表的成果。
+> `reports/03_step1_to_step3.md`（pipeline 與 Run A–E 完整數據）、
+> `reports/progress.md`（決策日誌）。
 
 ---
 
-## 摘要 Abstract
+## 摘要
 
-- **核心論點句**：「在兩季 CPBL 公開資料上，我們以時序感知 walk-forward
-  評估證明：球場、天氣、球隊戰力、打者狀態、投手等特徵組*皆無法在樣本
-  外區分於純主場優勢*，且方法論兩次自動戳破 holdout 假訊號。」
-- 必含：season-OOF AUC ≈ .50–.53；錨點 Vegas 賠率 MLB 僅 ≈58.2%。
-- 插入 **圖 1 `Results/figures/ablation_holdout_vs_oof.png`**（全文最關鍵
-  一張，摘要點名「見圖 1」）。
-- 一句方法論貢獻定調 + 一句「負面結果與運動預測文獻一致」。
+本研究探討一個明確的問題：**僅憑賽前可得資訊，能否預測一場尚未開打的
+CPBL 例行賽主隊是否獲勝？** 我們在兩季（2023–2024，678 場）公開資料上，
+建立一條時序嚴謹的評估管線——時間感知切分、walk-forward 樣本外（OOF）
+預測、以交叉驗證 AUC（而非雜訊極大的小樣本 holdout）選模、bootstrap
+信賴區間、單一校準與雙閾值報告——並以 m1–m7 漸進消融量化球場、天氣、
+球隊戰力、打者狀態、投手等五組特徵各自的邊際貢獻。
 
----
+結果是一個**乾淨且可辯護的負面結論**：在嚴謹的樣本外評估下，**沒有任何
+特徵組能與「純主場優勢」區分**；各組 season-OOF AUC 全部落在 0.50 附近
+一個約 ±0.05 的帶內（圖 1）。最具啟發性的是投手組：它在 47 場 holdout
+上達到看似亮眼的 AUC 0.689，卻在 leak-free walk-forward 上跌至 0.463——
+這正是本管線設計要捕捉的小樣本假訊號，且是繼 Run A 之後**第二次**被同
+一套方法論自動戳破。
 
-## 步驟 1 — 定義目標 Define the Goal
-
-> *"What problem am I solving?"* — 生命週期第一節；目標不利則下游全錯。
-
-- **目的**：鎖定 business question、target、分析單位、**預先登記**的成功
-  門檻與假設。
-- **核心論點句**：「本研究預測一場*尚未開打*的 CPBL 例行賽主隊獲勝機率
-  `P(is_home_win=1)`，並以*事前*訂定的門檻檢驗各特徵組是否帶賽前訊號。」
-- 內容要點（全部出自 `Results/01_define_the_goal.md`，照抄勿改）：
-  - target `is_home_win ∈ {0,1}`；平手剔除；單位 = 一場比賽。
-  - 利害關係人（charter §2）：運彩分析師需**校準機率**（AUC 高但
-    over-confident 會直接賠錢）→ 解釋為何後面堅持報 Brier／校準曲線。
-  - **預先登記成功門檻**（charter §7 — 這段是科學誠信的關鍵）：
-    (a) 必勝＝Test AUC 顯著高於 m1 截距 95% bootstrap CI 上界；
-    (b) 可發表＝Test AUC ≥ 0.60；(c) 可部署＝Test AUC ≥ 0.62 且校準。
-  - 預先登記假設 HS（球場）、HW（天氣），檢定法 LRT＋DeLong ΔAUC＋
-    paired bootstrap。
-- **方法論變更（誠實揭露，放這節結尾一段）**：charter 原規劃 R／
-  tidymodels；因 Colab 上 tidymodels 過慢、且授課允許 Python，**全流程
-  改以 Python 實作**，R 僅留參考鏡像。charter 的舊 m1–m7（m6＝球場+
-  天氣）後因實測 m6≈.467＝垃圾，**m6 槽位改鎖為「投手」**（理由見步驟
-  4）；概念生命週期不變，實作與 m6 定義有調整，於此聲明以免與 charter
-  表面矛盾。
-
-## 步驟 2 — 獲取資料 Acquire Data
-
-> *"What information do I need?"* — 把 charter 轉成證據；raw data 視為
-> 寫一次、永不竄改、可重現的 WORM 儲存。
-
-- **目的**：來源、規模、合法性、provenance，以及資料工程踩到的真坑。
-- **核心論點句**：「資料全部來自公開的野球革命 rebas JSON 與 Open-Meteo
-  （皆無金鑰），嚴格禁用 Kaggle／預打包資料集；每次擷取可位元級重現。」
-- 內容要點：
-  - rebas v0.1.0-2024 ＋ v0.1.0-2023.0/.1（**無 2022 release**）；
-    SHA256 provenance manifest（`data/raw/_provenance/`）。
-  - **資料工程實坑（必寫，展現嚴謹）**：2024 為 ASCII 檔名、2023 為
-    *中文*檔名（`中職2023年-OpenData.json` 等 4 種）；原本寫死的
-    `CPBL-*` glob **靜默吃掉整個 2023 且不報錯** → N 卡在 366。修正
-    `*OpenData*` 後 N 366→**678**。教訓：靜默資料遺漏比崩潰更危險。
-  - 天氣：原規劃 CWA CODiS，遇 CAPTCHA／session 失敗 → 改 **Open-Meteo
-    Archive**（ERA5，無金鑰，反正 ERA5 已吸收 CWA 測站）；硬失敗保護
-    （缺座標／缺漏 >50% 直接 SystemExit，不靜默塞 NA）。
-  - **不需爬蟲、不需 CWA 金鑰**：投手資料 rebas `pitcherBox` 本來就有。
-  - 細節引 `reports/02a_cde52470_data_audit.md`。
-- 插入：N/切分表（train 406 / valid 97 / test 47 / post-warmup 550；
-  總場 678）—— 來源 `Results/eval/feature_schema.json:n`。
-
-## 步驟 3 — 探索資料 Explore the Data
-
-> *"Find patterns that lead to solutions."* — EDA 是最便宜的地方殺掉
-> 壞假設、挖出資料品質地雷。
-
-- **目的**：用 EDA 結果驅動特徵設計與資料品質決策。
-- **核心論點句**：「探索性分析確認 Park Factor 的球場差異與缺漏結構、
-  驗證 rebas `pitcherBox` schema，並以 PCA／K-means 檢視特徵空間 ——
-  後兩者*獨立佐證*了賽前無訊號的負面結論。」
-- 內容要點：
-  - Park Factor：澄清湖 ≈1.18（打者球場）、天母 ≈0.86（投手球場）等
-    （`data/processed/park_factors.csv`）。
-  - 缺漏審計＋插補決策樹（引 `reports/02a`）；平手場剔除規則。
-  - **投手 schema 驗證（notebook Cell 4 診斷）**：每場每邊*恰好一個*
-    `order==1`（0/1356 例外）→ 先發識別可靠；欄位
-    `IPOuts/NP/BF/H/HR/BB/IBB/HB/SO/R/ER`；每位先發中位數 ~10 場 →
-    決定「近 5 場滾動 + <3 場冷啟動回退」。
-  - 打者狀態 30 場滾動分布；天氣 × 得分初探（後證實天氣最弱）。
-  - **PCA / K-means（notebook Cell 7b，純探索、不餵 m1–m7 模型）**：
-    - 天氣 4 變數 PCA：scree + PC1–PC2 散點依勝負上色 → **主成分空間
-      不分主隊勝負**（`eda_weather_pca.png`），與「天氣是最弱組
-      （season-OOF .524≈噪音）」一致。
-    - 以 `diff_*` 比賽輪廓 K-means（k=4，*文件化選擇、非調參*）：
-      找得到打法分群，但**各群主場勝率 ≈ 持平於整體基準**
-      （`eda_kmeans.png`）→ 結構存在於*打法*、不存在於*勝負*。
-    - **定位明確**：非監督探索、**不進模型**；從另一角度*獨立印證*
-      負面結論（不是用來提升 AUC）。
-- 圖：`eda_weather_pca.png`、`eda_kmeans.png`、`shap_summary.png`
-  （步驟 5）；Park Factor 表。
-
-## 步驟 4 — 建立模型 Build the Model
-
-> *"Build the model."* — 小樣本先行；m1–m7 漸進消融，演算法固定先變
-> 特徵、再固定特徵變演算法。
-
-- **目的**：特徵工程 + 消融設計 + 時序建模管線。
-- **核心論點句**：「所有特徵嚴格只用賽前可得資訊；以 m1–m7 消融（演算法
-  固定 logistic）量化每組特徵的邊際貢獻，贏家由 CV-AUC 選（絕不用 N=47
-  holdout）。」
-- 內容要點：
-  - 特徵組（皆 leak-free，滾動只取*先前*場次）：
-    - 球隊戰力：Elo(K=4,HFA+24,MoV)、Pythagenpat(30g,1.83)、休息(cap5)、
-      Park Factor（時序 leave-one-out）。
-    - 打者狀態：30 場滾動 OPS/HR/K%/BB%/runs diff＋該球場 OPS。
-    - **投手（m6，本季新增、本專案關鍵嘗試）**：rebas `pitcherBox`
-      → 先發(order==1)近 5 場自身滾動 ERA/WHIP/K%/BB%/HR9＋全隊投手
-      30 場滾動；冷啟動 <3 場 → 中位數補（聯盟回退）；主客場合併
-      （投球技術與場地無關）。**不需爬蟲、不需 CWA**。
-  - m1–m7（演算法固定 logistic）：m1 截距／m2 球場／m3 天氣／m4 球隊
-    戰力／m5 打者狀態／**m6 投手**／m7 全部（5 組）。說明舊 m6（球場+
-    天氣，實測 .467 垃圾）退役、槽位讓給投手的理由。
-  - 時序切分（**絕不隨機**）：train < 2024-08-01（2023 全進 train）／
-    valid → 09-15／test ≥ 09-16；walk-forward OOF（`ts_oof_proba`：
-    `cross_val_predict` 不支援 TimeSeriesSplit，自行 clone+fit）。
-  - 演算法比較（特徵固定 m7）：logit／glmnet／RF／XGBoost／LightGBM，
-    `TimeSeriesSplit(5)` GridSearch；單一 isotonic 校準（小 N 不堆疊）。
-  - 實作 = **單一自含 notebook `python/cpbl_pipeline.ipynb`**（step1→1b
-    →2→3 全內嵌；不 clone、不 subprocess）。
-
-## 步驟 5 — 評估模型 Evaluate the Model  ★放圖 1★
-
-> *"Does it actually solve my problem?"* — 別愛上單一指標；AUC 給排序、
-> 校準給信任、CI 給不確定性。
-
-- **目的**：以穩健指標評估，誠實對照預先登記門檻。
-- **核心論點句**：「以 per-group season-OOF（leak-free walk-forward，455
-  場）評估：*沒有任何特徵組可與主場優勢區分*；每一次 holdout 亮點都被
-  season-OOF＋bootstrap CI 證實為雜訊。」
-- **必放圖 1**：`Results/figures/ablation_holdout_vs_oof.png` —— 每組
-  N=47 holdout AUC vs leak-free season-OOF。**這張圖就是論點**：m6 投手
-  holdout .69 高聳、OOF .46 沉到 .50 線下；所有藍柱貼 .50。
-- **Run 演進表**（來源 `reports/03` §3.5 ＋ `_final_metrics.json`）：
-
-  | Run | 設定 | 穩健指標 | 解讀 |
-  |---|---|---|---|
-  | A | N=366, pre-weather | RF holdout .656 | 後證實 N=47 抽樣噪音 |
-  | B | N=366, +weather | season-OOF **.504** | 擲銅板；無組勝截距 |
-  | C | N=678, 2023 修復 | season-OOF **.538** | 純加資料微升（真實但小）|
-  | D | N=678, +投手 | holdout m6 **.689** | 誘人 → 但 N=47 |
-  | E | per-group season-OOF | m6 **.463** | **.689 是噪音，第二次中陷阱** |
-
-- **per-group season-OOF**（`_final_metrics.json:ablation_season_oof`）：
-  m1≈.50 / m2 .512 / m3 .524 / m4 .500 / m5 .500 / **m6 .463** / m7 .495
-  （455 場 OOF 的 CI≈±.05 → 全是 .50 附近一帶）。
-- **per-fold 證據**（`ablation_season_oof_folds.m6`）：
-  `[.441,.501,.406,.432,.584]` → **高變異雜訊，非系統性符號翻轉**
-  （m4/m7 同樣亂跳）—— 完整刻畫「就是雜訊、無一致方向」。
-- 校準／雙閾值：isotonic 是否服務看 holdout Brier；閾值取 leak-free
-  OOF Youden-J，holdout 同時報 0.5 與調整閾值（不靜默替換）。
-  輔助圖 `calibration.png` / `model_comparison.png` / `shap_summary.png`。
-- **對照預先登記門檻**：(a)(b)(c) **全部未達**；HS／HW 假設未獲支持。
-  m6 holdout 一度像達標 (a)，但 season-OOF .463 推翻 —— **這正是
-  charter 預先指定 bootstrap/DeLong 的理由，方法論做到了它該做的事**。
-
-## 結論 Conclusion
-
-- **核心論點句**：「在現有公開資料與兩季規模下，CPBL 單場主隊勝負於
-  賽前接近不可預測；可交付成果是*能正確揭露此事實的嚴謹方法論*，而非
-  被噪音美化的數字。」
-- 為何是預期、非失敗：運動單場預測本就接近隨機；**Vegas 賠率（職業
-  運動最強賽前預測、含完整市場資訊）MLB 僅 ≈58.2%**，學術 ML 57–59.5%
-  （A. Cui, Wharton 2020；Entropy 24(2):288）。兩季 CPBL ≈.50–.53 OOF
-  落在理論預期內。
-- 方法論教訓：Run A .656、Run D m6 .689 兩個假訊號被同一套機制戳破 →
-  小樣本 holdout 排名會說謊，圖 1 為活教材。
-- 不再加特徵／調參（＝擬合噪音）；生產模型 rf/m7（season-OOF .528，
-  holdout .640 CI[.45,.81]）誠實連 CI ＋負面消融一起呈現。
-- 限制：兩季 N、無 probable starter（賽前不可得 → 部署侷限）、CPBL
-  樣本量遠小於 MLB。
-
-## 步驟 6（後續）— 部署 R Shiny
-
-- 預算 artifacts 已就緒：`Results/eval/predictions.csv` /
-  `models/best_model.joblib` / `Results/eval/feature_schema.json` /
-  4 張圖。Shiny **零計算**、只渲染。
-- **落地文案定調**：儀表板*不是*預測產品，是「方法論展示＋圖 1 陷阱
-  ＋誠實 AUC≈.53 附 CI」。避免任何「準確預測」字眼。
-- 由 Sub-Agent 6（`@shiny-deployer`）執行。
-
-## 可重現性 Reproducibility
-
-- **單一自含 notebook**：`python/cpbl_pipeline.ipynb` —— step1→step1b→
-  step2→step3 全部內嵌為 cell，`Runtime → Run all` 一鍵跑完。不 clone
-  repo、不跑 subprocess、無 `.py` 相依（球場 lookup 內嵌）；無 stale
-  程式問題（notebook 本身即程式）。
-- 決策全程記於 `reports/progress.md`（newest-on-top）。
-- R 參考鏡像保留於 `R/`（非執行路徑）。
-
-## 參考文獻 References
-
-- A. Cui, *Forecasting Outcomes of MLB Games Using Machine Learning*,
-  Wharton (2020).
-  https://fisher.wharton.upenn.edu/wp-content/uploads/2020/09/Thesis_Andrew-Cui.pdf
-- *Exploring and Selecting Features to Predict the Next Outcomes of MLB
-  Games*, Entropy 24(2):288 (2022). https://www.mdpi.com/1099-4300/24/2/288
-- 野球革命 rebas open data：https://github.com/rebas-tw/rebas.tw-open-data
-- Open-Meteo Archive API：https://open-meteo.com/
+因此，**本專案真正的貢獻不是一個高 AUC 數字，而是一套能正確揭露「此問
+題在現有資料下接近不可預測」的嚴謹方法論**。此結論與運動預測文獻一致：
+即使是職業運動最強的賽前預測者——Las Vegas 盤口（含完整市場資訊）——在
+MLB 上也僅達約 58.2% 準確率，學術機器學習模型約 57–59.5%。兩季 CPBL
+資料得到 ≈0.50–0.53 的樣本外 AUC，是理論預期內的結果，而非專案失敗。
 
 ---
 
-### 給寫稿者的待辦（TODO）
+## 1. 定義目標 Define the Goal
 
-- [ ] 每節「核心論點句」展開成 1–3 段散文（語氣：自信、誠實、不防衛）。
-- [ ] 圖 1 放進摘要與步驟 5，加完整 caption（橘 vs 藍、.50 線、m6 反差）。
-- [ ] 步驟 1 門檻、步驟 5 Run 表逐一對 `Results/eval/_final_metrics.json`
-      與 `reports/03` 校對（對不上＝stale，勿手改）。
-- [ ] 決定輸出格式：純 Markdown 交件 / pandoc → PDF / Rmd knit。
-- [ ] 步驟 1 結尾的「R→Python＋m6 relock」聲明潤飾，確保與
-      `Results/01_define_the_goal.md` 不矛盾。
+> *"What problem am I solving?"* — 資料科學生命週期的第一個節點；
+> 若目標模糊，所有下游工作都會耗在錯誤的標的上。
+
+### 1.1 業務問題與分析單位
+
+本研究的可交付預測是：對一場**尚未開打**的 CPBL 例行賽，輸出主隊獲勝
+機率 `P(is_home_win = 1)`。分析單位為「一場比賽」；目標變數
+`is_home_win ∈ {0, 1}`，平手場次（極少數）剔除，使問題成為乾淨的二元
+分類。利害關係人中以「運彩分析師」對模型要求最嚴苛——他不只要排序能力
+（AUC），更需要**機率校準**：一個 AUC 高但系統性過度自信的模型，與盤口
+對賭時會直接虧損。此需求是本報告自始至終堅持同時報告 Brier 分數與校準
+曲線、且採單一保守校準的根本原因。
+
+### 1.2 預先登記的成功門檻與假設
+
+為避免「先看結果再挑指標」的事後合理化，本專案在 `Results/01_define_
+the_goal.md` 中**事前**登記了可證偽的成功門檻與假設（下表）。這份預先
+登記本身就是本研究方法論誠信的核心：第 5 節將逐條對帳，並誠實報告其
+達成與否。
+
+| 代號 | 門檻／假設 | 通過條件 | 檢定方法 |
+|---|---|---|---|
+| (a) 必勝 | Test AUC 顯著優於 m1 截距 | 高於 m1 95% bootstrap CI 上界 | bootstrap + DeLong ΔAUC |
+| (b) 可發表 | Test AUC ≥ 0.60 | — | — |
+| (c) 可部署 | Test AUC ≥ 0.62 且校準良好 | — | — |
+| HS | 球場有獨立訊號 | 加入後 AUC 上升且 LRT p<0.05 | LRT + DeLong |
+| HW | 天氣有獨立訊號 | 加入後 AUC 上升且 LRT p<0.05 | LRT + paired bootstrap |
+
+### 1.3 實作路線的誠實聲明
+
+charter 原規劃以 R／`tidymodels` 為主要建模框架。實作期間發現
+`tidymodels` 在 Colab 環境執行過慢，且授課教師後續允許使用 Python，
+故**全流程改以 Python 實作**，R 程式碼降級為僅供交叉驗證的參考鏡像
+（保留於 `R/`，非執行路徑）。此外，charter 原始的 m1–m7 中 m6 定義為
+「球場＋天氣」組合；該組在實測中 season-OOF 僅約 0.467（與雜訊無異），
+故將 m6 槽位**改鎖定為「投手」**——這是 rebas 資料中唯一尚未開採、且
+最可能帶來訊號的槓桿。概念上的五步驟生命週期不變，但實作框架與 m6 的
+語意確有上述調整，於此明確聲明，以免與 `Results/01_define_the_goal.md`
+表面文字產生矛盾。
+
+---
+
+## 2. 獲取資料 Acquire Data
+
+> *"What information do I need?"* — 從 charter 到證據的橋樑；
+> 原始資料視為寫一次、永不竄改、永遠可重現的 WORM 儲存。
+
+### 2.1 資料來源與合法性
+
+所有資料來自公開、免金鑰來源，並嚴格遵守課程限制（**禁用 Kaggle 與
+任何預打包資料集**）：
+
+- **比賽資料**：野球革命 rebas open data，使用 release
+  `v0.1.0-2024`、`v0.1.0-2023.0`、`v0.1.0-2023.1`（**rebas 無 2022
+  release**）。每個來源檔的 SHA256 記入 `data/raw/_provenance/`，達到
+  位元級可重現。rebas 的 `homeBatterBox / awayBatterBox /
+  homePitcherBox / awayPitcherBox` 提供逐場、逐球員的打擊與投球成績。
+- **天氣資料**：原規劃中央氣象署 CODiS，實作時遭遇 CAPTCHA／session
+  阻擋而失敗；改用 **Open-Meteo Archive API**（ERA5 重分析，免金鑰，
+  且 ERA5 本就吸收 CWA 測站觀測）。step1b 設有硬失敗保護：球場座標
+  缺失或天氣缺漏率 >50% 時直接 `SystemExit`，**絕不靜默寫入 NA 天氣**。
+
+值得強調：投手成績 rebas `pitcherBox` 本就完整提供——**本專案不需要
+任何爬蟲，也不需要 CWA 金鑰**。
+
+### 2.2 一個值得記錄的資料工程教訓
+
+rebas 2024 release 使用 ASCII 檔名（`CPBL-2024-OpenData.json`），但
+**2023 release 使用中文檔名**（`中職2023年-OpenData.json`、
+`中職2023年下半季-OpenData.json`、`中職2023年-季後挑戰賽-OpenData.json`、
+`中職2023年-台灣大賽-OpenData.json`，共四種）。原始程式以寫死的
+`CPBL-*` glob 探索檔案，**靜默地吃掉整個 2023 賽季且不報任何錯誤**，
+使樣本數長期卡在 366。修正 glob 為 `*OpenData*`（仍正確排除逐場
+`*-G<N>.json`）後，樣本數由 366 增至 **678**。此教訓——靜默資料遺漏
+比程式崩潰更危險——直接促成可重現性設計中的明確驗證機制（第 8 節）。
+
+### 2.3 樣本規模與時間切分
+
+最終可用樣本 678 場。採用**嚴格時間感知切分（絕不隨機切分，因為這是
+時間序列運動資料）**：
+
+| 切分 | 時間窗 | N |
+|---|---|---|
+| train | < 2024-08-01（2023 全季皆落於此） | 406 |
+| valid | 2024-08-01 .. 2024-09-15 | 97 |
+| test（holdout） | ≥ 2024-09-16（季末＋季後賽） | 47 |
+| post-warmup（滾動特徵熱身後可用） | — | 550 |
+
+holdout 僅 47 場——這個極小的測試集，正是後續 Run A 與 Run D 兩次
+產生假訊號的根源，也是本研究堅持以 season-OOF 為主要指標的原因。
+
+---
+
+## 3. 探索資料 Explore the Data
+
+> *"Find patterns that lead to solutions."* — EDA 是最便宜的地方
+> 殺掉壞假設、挖出資料品質地雷。
+
+### 3.1 球場效應與資料品質
+
+時間感知（leave-one-out）的 Park Factor 揭示明確的球場差異：澄清湖
+≈1.18（打者友善）、天母 ≈0.86（投手友善），其餘介於兩者之間
+（`data/processed/park_factors.csv`）。缺漏審計與插補決策樹記於
+`reports/02a_cde52470_data_audit.md`；平手場剔除規則於該處明列。
+
+### 3.2 投手 schema 驗證
+
+由於投手是本季新增的關鍵特徵，我們在建模前以診斷程式（notebook
+Cell 4）直接驗證 rebas `pitcherBox` 的真實結構，而非僅信任文件：
+**每場每邊恰好有一筆 `order == 1`（1356 個 game-side 中 0 例外）**，
+先發投手識別因此完全可靠；欄位為
+`IPOuts / NP / BF / H / HR / BB / IBB / HB / SO / R / ER`（較 schema
+文件更豐富）。每位先發的出賽場次中位數僅約 10 場——此分布直接決定了
+特徵設計採「近 5 場滾動 ＋ 不足 3 場時以中位數回退」的冷啟動策略
+（第 4 節）。
+
+### 3.3 非監督探索：PCA 與 K-means
+
+為從另一個角度檢視特徵空間，notebook Cell 7b 進行兩項**純探索性**
+分析，**明確不餵入 m1–m7 模型**：
+
+- **天氣 PCA**：對溫度、濕度、風速、降水四變數標準化後做主成分分析
+  （scree 圖 ＋ PC1–PC2 散點依勝負上色，`eda_weather_pca.png`）。
+  主成分空間中**主隊勝／負兩群完全重疊、無可分性**，與後續「天氣是
+  最弱特徵組（season-OOF ≈0.524，與雜訊無異）」的結論一致。
+- **比賽輪廓 K-means**：對所有 `diff_*` 比賽輪廓特徵標準化後分群
+  （k=4，為**文件化的探索選擇、非調參結果**；`eda_kmeans.png`）。
+  分群確實找到不同的「打法輪廓」，但**各群的主隊勝率幾乎持平於整體
+  基準線**——亦即結構存在於*打法*之中，卻不存在於*勝負*之中。
+
+這兩項分析的價值在於：它們以非監督方法，從與監督式消融完全不同的
+角度，**獨立印證了「賽前無可預測訊號」這個負面結論**，而非被用來
+提升 AUC。
+
+---
+
+## 4. 建立模型 Build the Model
+
+> *"Build the model."* — m1–m7 漸進消融：先固定演算法、變動特徵組以
+> 量化各組邊際貢獻；再固定特徵、變動演算法以選引擎。
+
+### 4.1 特徵工程（全部 leak-free）
+
+所有特徵嚴格只使用比賽前可得的資訊；所有滾動統計只取該隊／該投手的
+**先前**場次，絕不含當場資料：
+
+- **球隊戰力**：Elo（K=4、主場優勢 +24、勝差調整 MoV）、Pythagenpat
+  期望勝率（30 場滾動、指數 1.83）、休息天數（上限 5）、Park Factor
+  （時間感知 leave-one-out）。
+- **打者狀態**：30 場滾動的 OPS / HR / K% / BB% / 得分差，加上該隊
+  在該球場的滾動 OPS。
+- **投手（m6，本季新增、本專案的關鍵嘗試）**：自 rebas `pitcherBox`，
+  以 `order == 1` 識別先發。建構兩類訊號：(i) 該先發投手**自身**近
+  5 場的滾動 ERA / WHIP / K% / BB% / HR9（主客場合併，因投球能力與
+  場地無關；不足 3 場先發時以聯盟中位數回退，故菜鳥／臨時先發場次
+  不被刪除）；(ii) 該隊全體投手近 30 場的滾動成績（牛棚＋輪值整體
+  品質）。**此特徵不需爬蟲、不需 CWA 金鑰，rebas 本就提供。**
+
+### 4.2 m1–m7 消融設計
+
+固定演算法為 logistic regression，僅變動特徵組，以教科書方式量化
+每組的邊際貢獻：
+
+| 模型 | 特徵組 | 回答的問題 |
+|---|---|---|
+| m1 | 截距（純主場優勢基準） | 不靠任何特徵能多準？ |
+| m2 | 球場 | 場地本身可預測嗎？ |
+| m3 | 天氣 | 氣候本身可預測嗎？ |
+| m4 | 球隊戰力（Elo/Pythag/休息/PF） | 球隊強弱本身？ |
+| m5 | 打者狀態（滾動打擊形態） | 打線近況本身？ |
+| **m6** | **投手（先發近 5＋全隊 30 場）** | **投手本身？** |
+| m7 | 全部五組 | 最佳特徵集 |
+
+m1 並非空模型，而是「純主場優勢」基準——任何特徵組必須在樣本外贏過
+它才算有訊號。charter 舊 m6（球場＋天氣）因實測 ≈0.467（與雜訊無異）
+而退役，槽位讓給投手。此 m1–m7 方案於程式碼、本報告、charter 三處
+鎖定一致。
+
+### 4.3 評估與選模機制
+
+- **時間感知切分**（如 §2.3），walk-forward OOF 預測：因
+  `cross_val_predict` 不支援 `TimeSeriesSplit`（其非分割），自實作
+  `ts_oof_proba`（逐折 clone＋以過去訓練、預測未來）。
+- **演算法比較**（特徵固定為 m7）：logit、glmnet(L2)、
+  glmnet(elastic-net)、RandomForest、XGBoost、LightGBM，各以
+  `TimeSeriesSplit(5)` `GridSearchCV` 調參。
+- **贏家由 CV-AUC 選定，絕不用 47 場 holdout 選**（holdout 的 95%
+  bootstrap CI 寬達約 ±0.18，據此選模等同擲銅板）。
+- **單一 isotonic 校準**（時間感知 CV；小樣本下堆疊或多層校準只是
+  擬合雜訊），且僅在其降低 holdout Brier 時才採用。
+- **雙閾值報告**：閾值取自 leak-free trainval OOF 的 Youden's J，
+  holdout 同時報 0.50 與調整後閾值，絕不靜默替換。
+- **每組 season-OOF**：對 m1–m7 各組另做 leak-free walk-forward
+  （455 場），這是判定訊號真偽的穩健指標。
+
+實作為**單一自含 notebook `python/cpbl_pipeline.ipynb`**：step1 → step1b
+→ step2 → step3 全部內嵌為 cell，不 clone repo、不跑 subprocess、無
+`.py` 相依。
+
+---
+
+## 5. 評估模型 Evaluate the Model
+
+> *"Does it actually solve my problem?"* — 別愛上單一指標：AUC 給
+> 排序，校準給信任，信賴區間給不確定性。
+
+### 5.1 演進歷程：訊號始終無法穩健成立
+
+我們以五次完整執行（Run A–E）逐步排除資料與特徵的限制；每一次的
+*穩健*指標都揭示同一件事：
+
+| Run | 設定 | 穩健指標 | 解讀 |
+|---|---|---|---|
+| A | N=366，未含天氣 | RF holdout AUC ≈ 0.656 | 後證實為 47 場抽樣雜訊 |
+| B | N=366，含天氣 | season-OOF **0.504** | 擲銅板；無組勝過截距 |
+| C | N=678（修復 2023） | season-OOF **0.538** | 純加資料的微小但真實上升 |
+| D | N=678，加投手 | holdout m6 **0.689** | 看似亮眼，但僅 47 場 |
+| E | 每組 season-OOF | m6 **0.463** | 0.689 是雜訊，第二次中陷阱 |
+
+Run C 顯示「修復 2023 資料、樣本翻倍」確實帶來小幅但真實的提升
+（season-OOF 0.504→0.538，調參 CV-AUC 亦同向上升），證明資料量本是
+一個真實因子，故投手工作值得在更大的 N 上嘗試。Run D 加入投手後，
+m6 在 47 場 holdout 上達 0.689——這是全專案最誘人的數字。
+
+### 5.2 決定性證據：每組 season-OOF（圖 1）
+
+關鍵問題只有一個：**m6 投手的 0.689 是真實的 walk-forward 訊號，還是
+47 場的雜訊？** 每組 leak-free season-OOF（455 場）給出明確答案：
+
+| 組 | season-OOF AUC | 判讀 |
+|---|---|---|
+| m1 截距 | ≈ 0.50 | 主場優勢基準＝機會水準 |
+| m2 球場 | 0.512 | 與 0.50 在 CI 內無異 |
+| m3 天氣 | 0.524 | 與 0.50 在 CI 內無異（holdout 上更僅 0.436）|
+| m4 球隊戰力 | 0.500 | 無 |
+| m5 打者狀態 | 0.500 | 無 |
+| **m6 投手** | **0.463** | **低於 0.50** |
+| m7 全部 | 0.495 | 無 |
+
+455 場 OOF 的 AUC 信賴區間約 ±0.05，故 0.463–0.524 全部落在 0.50
+附近的同一個帶內——**沒有任何特徵組能與主場優勢截距區分**。投手組
+在 holdout 上的 0.689，在穩健的 walk-forward 上跌至 0.463：這正是
+Run A（RF 0.656）的同一個陷阱，被同一套 season-OOF＋bootstrap CI
+機制**第二次**自動戳破。
+
+進一步檢視 m6 的逐折 OOF AUC：`[0.441, 0.501, 0.406, 0.432, 0.584]`
+——並非系統性的符號翻轉（那會每折一致低於 0.50），而是**高變異雜訊**
+（全距 0.18、均值約 0.47、無一致方向）；m4 `[.52,.47,.49,.53,.53]`
+與 m7 `[.47,.47,.45,.50,.58]` 呈現同樣的折間亂跳。負面結論至此被
+完整刻畫。
+
+> **圖 1（報告核心）`Results/figures/ablation_holdout_vs_oof.png`**：
+> 各特徵組在 47 場 holdout AUC（橘）對比 leak-free season-OOF AUC
+> （藍）。m6 投手橘柱高聳至 0.69、藍柱卻沉至 0.50 線下的 0.46；所有
+> 藍柱緊貼 0.50。這張圖本身就是本研究的論點：**小樣本 holdout 排名
+> 會說謊，而嚴謹的時序評估能揭穿它。**
+
+### 5.3 生產模型與校準
+
+依 CV-AUC 選出的贏家為調參後的 RandomForest（CV-AUC 0.546），於
+holdout AUC 0.640、95% bootstrap CI `[0.451, 0.806]`、season-OOF
+0.528。isotonic 校準在 holdout 上反而提高 Brier，故依設計**服務未
+校準（raw）機率**（此即第 1 節強調校準的決策邏輯——寧可誠實服務
+raw，也不採用會惡化的校準）。輔助圖：`model_comparison.png`、
+`calibration.png`、`shap_summary.png`。
+
+**生產模型刻意維持「CV-AUC over m7」的贏家，未因 m6 的 holdout 數字
+而切換**——在每組 season-OOF 確認之前不前置任何精簡模型，方法論
+完整性優先於頭條數字。
+
+### 5.4 對帳預先登記門檻（誠實結論）
+
+| 門檻／假設 | 結果 | 是否達成 |
+|---|---|---|
+| (a) Test AUC 顯著優於 m1 | 無組之 season-OOF 區分於 m1 | ❌ 未達 |
+| (b) Test AUC ≥ 0.60 | 穩健 AUC ≈ 0.50–0.53 | ❌ 未達 |
+| (c) Test AUC ≥ 0.62 且校準 | 同上；校準亦惡化 | ❌ 未達 |
+| HS（球場有訊號） | m2 season-OOF 0.512 ≈ 機會 | ❌ 不支持 |
+| HW（天氣有訊號） | m3 season-OOF 0.524 ≈ 機會 | ❌ 不支持 |
+
+三個成功門檻**全部未達**，兩個假設**皆不獲支持**。m6 投手一度在
+holdout 上看似達成 (a)，但 season-OOF 0.463 推翻之——**這恰恰證明
+charter 事前指定 bootstrap／DeLong 等嚴謹檢定的必要性，方法論做到
+了它該做的事**。
+
+---
+
+## 6. 結論
+
+在現有公開資料與兩季規模下，**CPBL 單場主隊勝負於賽前接近不可預測**；
+本專案的可交付成果，是一套**能正確揭露此事實**的嚴謹評估方法論，而非
+一個被雜訊美化的預測數字。
+
+此負面結果是**預期內、且與文獻一致**的，並非專案失敗。運動單場結果
+本質高變異：即使是職業運動最強的賽前預測者——Las Vegas 盤口，握有
+完整市場資訊——在 MLB 上六季平均也僅約 **58.2%** 準確率；學術機器
+學習模型約 57–59.5%（A. Cui, Wharton 2020；*Entropy* 24(2):288,
+2022）。兩季 CPBL 資料得到 ≈0.50–0.53 的樣本外 AUC，落在此理論天花板
+之下的合理位置。
+
+方法論層面的教訓最具教學價值：本管線在 Run A（RF holdout 0.656）與
+Run D（投手 holdout 0.689）**兩次**偵測並戳破誘人的小樣本假訊號，
+0.689→0.463 的崩塌（圖 1）是「為何不可用小樣本 holdout 排名」的具體
+活教材。據此，我們**停止任何進一步的特徵或調參工作**（在此 N 下那
+等同擬合雜訊）；生產模型誠實地連同其寬信賴區間與負面消融一併呈現，
+絕不單獨報告 0.640 此一數字。
+
+**限制**：僅兩季樣本；rebas 不提供賽前 probable starter（投手特徵
+僅能用於回溯評分，無法支援真正的「今日」推論）；CPBL 樣本量遠小於
+MLB。
+
+---
+
+## 7. 部署（後續 Sub-Agent 6 — R Shiny）
+
+預算（precompute）契約已就緒：`Results/eval/predictions.csv`、
+`models/best_model.joblib`、`Results/eval/feature_schema.json` 與六張
+圖。R Shiny 將**零計算、僅渲染**這些產出物（不使用 reticulate，
+部署安全）。**落地文案定調**：此儀表板*不是*一個預測產品，而是一個
+**方法論展示**——以圖 1 的 holdout 陷阱為核心，誠實呈現「walk-forward
+AUC ≈ 0.53、附信賴區間」，避免任何「精準預測」的措辭。此步驟由
+`@shiny-deployer`（Sub-Agent 6）執行。
+
+---
+
+## 8. 可重現性
+
+- **單一自含 notebook**：`python/cpbl_pipeline.ipynb`（12 個 cell）。
+  在 Colab 開啟後 `Runtime → Run all` 即由上而下跑完全流程：下載
+  rebas（`USE_2023=True`）→ 投手診斷 → step1 → step1b → step2 →
+  EDA（PCA／K-means）→ step3 → 列印 `_final_metrics.json` 與六張圖。
+  **不 clone repo、不跑 subprocess、無 `.py` 相依**（球場經緯度
+  lookup 內嵌於 notebook），因此不存在「stale 程式」問題——notebook
+  本身即程式。
+- 程式版本驗證與「投手特徵確實進入產出物」的硬斷言內建於流程，避免
+  靜默使用舊資料（此防呆源自 §2.2 的教訓）。
+- 完整決策歷程（含每個 Run 的數字與理由）記於
+  `reports/progress.md`（最新在上）。R 參考鏡像保留於 `R/`（非執行
+  路徑）。
+- 轉 PDF：`pandoc reports/00_final_report.md -o report.pdf`
+  （需安裝中文字型，如 `--pdf-engine=xelatex -V CJKmainfont=...`）。
+
+---
+
+## 參考文獻
+
+- A. Cui, *Forecasting Outcomes of Major League Baseball Games Using
+  Machine Learning*, Wharton (2020).
+  <https://fisher.wharton.upenn.edu/wp-content/uploads/2020/09/Thesis_Andrew-Cui.pdf>
+- *Exploring and Selecting Features to Predict the Next Outcomes of
+  MLB Games*, **Entropy** 24(2):288 (2022).
+  <https://www.mdpi.com/1099-4300/24/2/288>
+- 野球革命 rebas open data：
+  <https://github.com/rebas-tw/rebas.tw-open-data>
+- Open-Meteo Archive API：<https://open-meteo.com/>
+
+---
+
+## 附錄：圖表清單
+
+| 檔案 | 用途 |
+|---|---|
+| `Results/figures/ablation_holdout_vs_oof.png` | **圖 1（核心）** holdout vs season-OOF 各組對比 |
+| `Results/figures/eda_weather_pca.png` | 天氣 PCA scree ＋ PC 空間勝負不可分 |
+| `Results/figures/eda_kmeans.png` | 打法 K-means 分群＋各群勝率持平 |
+| `Results/figures/model_comparison.png` | 演算法比較（holdout AUC）|
+| `Results/figures/calibration.png` | 校準曲線（raw vs calibrated）|
+| `Results/figures/shap_summary.png` | 贏家模型 SHAP 特徵重要度 |
+| `Results/eval/_final_metrics.json` | 所有量化數字之單一真實來源 |
+| `Results/eval/results_ablation.csv` | m1–m7 各組 holdout ＋ season-OOF |
