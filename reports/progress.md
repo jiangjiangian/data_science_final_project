@@ -23,18 +23,20 @@ post-warmup games) landed:
 | m3 weather | .524 | within noise of .50 (and .436 on holdout) |
 | m4 team-strength | .500 | nothing |
 | m5 batter-state | .500 | nothing |
-| **m6 pitching** | **.463** | **worst — below chance** |
+| **m6 pitching** | **.463** | below .50 (noise or small-N sign-flip) |
 | m7 full(27) | .495 | nothing |
 
-**Verdict (the pre-agreed decision rule, second branch):** m6 = .463
-≪ .50 → Run D's seductive **holdout m6 = .689 was pure N=47 noise** —
-the exact Run-A trap, now caught a *second* time by the season-OOF +
-bootstrap-CI machinery. **No feature group beats the home-field
-intercept walk-forward. Pitching included.** OOF ≈.50 across every
-engineered signal over two full seasons → this is not a pitching-
-encoding problem; single-game CPBL home-win is near-random pre-game at
-this sample size (consistent with MLB pre-game SOTA ≈.58–.60 needing
-vastly more data + market signal).
+**Verdict (the pre-agreed decision rule, second branch):** Run D's
+**holdout m6 = .689 was N=47 noise** — the exact Run-A trap, caught a
+*second* time by the season-OOF + bootstrap-CI machinery. A 455-game
+OOF AUC has CI ≈±.05, so .463–.524 is **one band around .50 — no
+group is distinguishable from the HFA intercept**. m6's .463<.50 is
+either fold noise or small-N sign instability (added
+`ablation_season_oof_folds` to tell which next run); verdict identical
+either way. Not a pitching-encoding problem — single-game CPBL home-win
+is near-random pre-game at this N. Anchor: even **Vegas odds reach only
+≈58.2 % on MLB** (academic ML 57–59.5 %) → ≈.50–.53 OOF on 2 CPBL
+seasons is the *expected* result, not a failure (cited in reports/03).
 
 **This is the project's result — and it is a good one.** The
 contribution is the *methodology*: rigorous time-aware evaluation that

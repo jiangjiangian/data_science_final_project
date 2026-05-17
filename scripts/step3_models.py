@@ -40,6 +40,7 @@ Outputs:
   Results/eval/results_ablation.csv | results_algos.csv | results_tuned.csv
   Results/eval/_final_metrics.json
   Results/figures/model_comparison.png | calibration.png | shap_summary.png
+  Results/figures/ablation_holdout_vs_oof.png  (the report centrepiece)
 """
 import json
 import warnings
@@ -202,6 +203,7 @@ def ts_oof_proba(estimator, X, y, splitter):
 print("\n" + "=" * 70 + "\nABLATION m1..m7 (logistic; features vary)\n" + "=" * 70)
 ablation_rows = []
 ablation_oof = {}                       # leak-free walk-forward per group
+ablation_oof_folds = {}                 # per-fold AUC (sign-flip vs noise)
 _ab_tscv = TimeSeriesSplit(n_splits=5)
 for mname, feats in FEATURE_GROUPS.items():
     feats = [f for f in feats if f in df.columns]
@@ -236,6 +238,16 @@ for mname, feats in FEATURE_GROUPS.items():
         ablation_oof[mname] = (
             roc_auc_score(df.loc[k, TARGET], o[k])
             if df.loc[k, TARGET].nunique() > 1 else float("nan"))
+        # Fold-by-fold AUC: distinguishes "noise scattered around .50"
+        # from a systematic <.50 sign-flip. Same verdict either way (no
+        # robust signal) but the report must word it to match reality.
+        yv = df[TARGET].values
+        folds = []
+        for _tr, _te in _ab_tscv.split(df):
+            yt = yv[_te]
+            folds.append(round(float(roc_auc_score(yt, o[_te])), 3)
+                         if len(np.unique(yt)) > 1 else float("nan"))
+        ablation_oof_folds[mname] = folds
 ablation = pd.DataFrame(ablation_rows)
 ablation["season_oof_auc"] = ablation["model"].map(ablation_oof)
 ablation.to_csv(EVAL / "results_ablation.csv", index=False)
@@ -249,6 +261,9 @@ print(_ab_test.to_string(index=False))
 print(f"\nm1 HFA-baseline season-OOF = chance (~0.50); "
       f"m6 pitching season-OOF = {ablation_oof.get('m6', float('nan')):.3f} ; "
       f"m7 full = {ablation_oof.get('m7', float('nan')):.3f}")
+print(f"m6 per-fold OOF AUC = {ablation_oof_folds.get('m6')}  "
+      "(scattered ~.50 => noise; systematically <.50 => small-N "
+      "sign-flip — same verdict: no robust signal)")
 
 # ============================================================================
 # 2. Algorithm comparison @ full m7 (features fixed; algorithm varies)
@@ -431,6 +446,41 @@ fig.tight_layout()
 fig.savefig(FIG / "model_comparison.png", dpi=120)
 plt.close(fig)
 
+# THE report centrepiece: per-group N=47 holdout AUC vs leak-free
+# season-OOF AUC. The gap (esp. m6 pitching .689 -> .463) is the whole
+# argument for why small-holdout ranking is dangerous and why the
+# season-OOF + CI machinery exists. The visual IS the conclusion.
+abl_t = ablation[ablation.split == "test"].set_index("model")
+order = [m for m in ["m1", "m2", "m3", "m4", "m5", "m6", "m7"]
+         if m in abl_t.index]
+lbl = {"m1": "m1 intercept", "m2": "m2 stadium", "m3": "m3 weather",
+       "m4": "m4 team-str", "m5": "m5 batter", "m6": "m6 PITCHING",
+       "m7": "m7 full"}
+hold = [abl_t.loc[m, "auc"] for m in order]
+oofv = [ablation_oof.get(m, np.nan) for m in order]
+oofv = [0.5 if (v != v) else v for v in oofv]      # m1 NaN -> chance
+x = np.arange(len(order))
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.bar(x - 0.2, hold, 0.38, label="N=47 holdout AUC (noisy)",
+       color="#d98", edgecolor="k", linewidth=.4)
+ax.bar(x + 0.2, oofv, 0.38, label="season-OOF AUC (robust, ~455g)",
+       color="#48a", edgecolor="k", linewidth=.4)
+ax.axhline(0.5, color="gray", ls="--", lw=1, label="chance / HFA")
+for i, (h, o) in enumerate(zip(hold, oofv)):
+    ax.text(i - 0.2, h + .008, f"{h:.2f}", ha="center", fontsize=8)
+    ax.text(i + 0.2, o + .008, f"{o:.2f}", ha="center", fontsize=8)
+ax.set_xticks(x)
+ax.set_xticklabels([lbl[m] for m in order], rotation=20, ha="right")
+ax.set_ylim(0.40, max(hold) + .06)
+ax.set_ylabel("AUC")
+ax.set_title("Why small-holdout ranking lies: m6 pitching .689 holdout "
+             "→ .46 walk-forward\n(every group collapses to ~.50 OOF — "
+             "no pre-game signal at N=678)")
+ax.legend(loc="upper left", fontsize=8)
+fig.tight_layout()
+fig.savefig(FIG / "ablation_holdout_vs_oof.png", dpi=120)
+plt.close(fig)
+
 fig, ax = plt.subplots(figsize=(7, 6))
 for name, p in preds_for_calib.items():
     fp, mp = calibration_curve(yte, p, n_bins=8, strategy="quantile")
@@ -561,6 +611,7 @@ print(f"  feature_schema.json  ({len(m7)} features, "
     "season_oof_auc": float(oof_auc),
     "ablation_season_oof": {k: (None if (v != v) else float(v))
                             for k, v in ablation_oof.items()},
+    "ablation_season_oof_folds": ablation_oof_folds,
     "best_params": {k: v.best_params_ for k, v in searches.items()},
 }, indent=2, default=str), encoding="utf-8")
 print(f"\nfinal_metrics: {EVAL / '_final_metrics.json'}\nDONE.")

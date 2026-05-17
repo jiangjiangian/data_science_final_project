@@ -196,11 +196,18 @@ random→good and is pure noise at this size.
   (chance) / m2 .512 / m3 .524 / m4 .500 / m5 .500 / **m6 pitching
   .463** / m7 full .495. Run D's holdout **m6 .689 was pure N=47
   noise** — the same trap as Run A's .656, caught a *second* time by
-  the season-OOF + bootstrap-CI design. **No feature group beats the
-  HFA intercept out-of-sample; pitching is the *worst*.** Two full
-  seasons, every engineered signal ≈.50 walk-forward → single-game
-  CPBL home-win is near-random pre-game at this N (consistent with
-  MLB pre-game SOTA ≈.58–.60 requiring far more data + market signal).
+  the season-OOF + bootstrap-CI design. **No feature group is
+  distinguishable from the HFA intercept out-of-sample** (a 455-game
+  OOF AUC has CI ≈±.05, so .463–.524 is one band around .50). m6's
+  .463 sits *below* .50 — read the `ablation_season_oof_folds.m6`
+  fold vector: scattered around .50 ⇒ noise; systematically <.50 ⇒
+  small-N sign instability across the walk-forward folds. Either way
+  the verdict is identical: **no robust pre-game signal, pitching
+  included.** Consistent with the literature — even Vegas odds, the
+  single best pre-game predictor in pro sports with full market
+  information, reach only ≈58.2 % accuracy on MLB; academic ML sits
+  at 57–59.5 %. A 2-season CPBL model at ≈.50–.53 OOF is the
+  *expected* outcome, not a project failure.
 
 #### Conclusion (this is the result — and it is a good one)
 
@@ -216,6 +223,21 @@ the methodology, are the deliverable. No further feature/tuning work
 (that is fitting noise); production = the CV-AUC-over-m7 winner
 (`rf`, raw, season-OOF .528, holdout .640 CI[.45,.81]) reported
 *with* its CI and the negative ablation, never as a success number.
+
+Centrepiece figure: `Results/figures/ablation_holdout_vs_oof.png`
+(per-group N=47 holdout AUC vs leak-free season-OOF — the gap is the
+argument).
+
+**MLB prediction-ceiling references** (anchors the negative result as
+expected, not failure):
+- A. Cui, *Forecasting Outcomes of MLB Games Using Machine Learning*,
+  Wharton (2020) — academic ML accuracy 57–59.5 %.
+  <https://fisher.wharton.upenn.edu/wp-content/uploads/2020/09/Thesis_Andrew-Cui.pdf>
+- *Exploring and Selecting Features to Predict the Next Outcomes of
+  MLB Games*, Entropy 24(2):288 (2022) — survey + AUC ≈0.65 with
+  heavy feature sets. <https://www.mdpi.com/1099-4300/24/2/288>
+- Vegas odds (best pre-game predictor, full market info) ≈58.2 %
+  accuracy on MLB over six seasons (cited in the above).
 
 ---
 
