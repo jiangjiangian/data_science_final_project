@@ -11,6 +11,59 @@
 
 ---
 
+## 2026-05-17 — v2 STEP 3e: pitch-level overturn attempt
+
+User pushed back hard: the ≈0.53 negative result was being framed as
+"final" when it is only locked for **box-score-derived** features.
+Re-audited the data the user dropped: `PAList` carries full
+**pitch-by-pitch** play-by-play (`pitchType`/`velocity`/`coordX,Y`/
+`batterHand`/`pitcherHand`/`hardness`/`trajectory`/`WPA`/`RE24`) —
+CPBL Statcast-lite — and the existing pipeline used **none of it**.
+The combined `*OpenData*.json` already carries it (no scraper/glob
+change). Locked finding never tested pitch-level → legitimate untested
+overturn avenue. Acknowledged the miss directly to the user.
+
+Extended `cpbl_pipeline_v2.ipynb` with **STEP 3e** (cells 12-13;
+21 cells total) — 5 leak-free pre-game blocks: (1) starter stuff/
+command rolling 5 starts (velo/mix-entropy/zone%/swstr%/fps%),
+(2) starter L/R platoon split shrunk to a frozen league mean,
+(3) lineup contact & discipline rolling 10g (hardhit/LD/GB-FB/chase/
+zcontact/K/BB), (4) bullpen pitch quality rolling 30g, (5) form-ized
+WPA/RE24 as strictly-prior `team_*_prior_s2d`. Merged as `diff_*`
+into `model_ready_v2.csv` (same N — `features_complete` untouched so
+the two ablation arms are apples-to-apples). STEP 4 rewritten as the
+**overturn ablation**: season-OOF (walk-forward `ts_oof_proba`) for
+`saber` vs `saber+pitch` × 5-model menu + Stacking, paired bootstrap
+95% CI, `Results/v2/figures/pitch_level_ablation.png`, extends
+`_final_metrics_v2.json` with `pitch_level_ablation`.
+
+**Decisions / why:**
+- Strike zone + platoon league shrink are **pre-registered constants
+  frozen from a calibration window** (Colab: all 2023 → 2024 targets,
+  fully disjoint). The subagent's leakage probe (drop games ≥
+  G.date → features unchanged, d<1e-9) **caught & fixed a real bug**
+  (constants first computed over the full corpus incl. future) — the
+  probe is genuine, not decorative.
+- Independently line-audited all 581 lines of STEP 3e: every block
+  uses `iloc[max(0,i-N):i]` or `.shift(1).cumsum()` → current game
+  strictly excluded; WPA/RE24 only as `*_prior_s2d` with an
+  executable naming-guard assert; `>0.70 LEAKAGE SUSPECTED` assert
+  wraps both ablation arms + both stacks.
+- **Realistic ceiling stated up-front: ≈0.57–0.60 (Vegas/academic).
+  If saber+pitch beats saber-only with disjoint 95% CI → genuine,
+  modest, publishable overturn of "no signal beyond HFA". If not,
+  the negative result extends to pitch-level too.** No tuning toward
+  a number; no leakage rule relaxed to manufacture a win.
+- Known minor caveat (documented, non-blocking): B2's `opp_L_frac`
+  blend weight uses realized-PA handedness mix (vs announced starting
+  lineup) — negligible leak, it only weights two strictly-prior
+  splits. Note in the report.
+
+**Next:** push → user runs `Run all` on Colab → paste back
+`_final_metrics_v2.json:pitch_level_ablation` + `pitch_level_ablation.png`.
+That decides overturn vs negative-result-extends. Modelling reopens
+ONLY for this test; box-score conclusion stays as-is meanwhile.
+
 ## 2026-05-17 — v2 leak-free copy notebook (paper-borrowed sabermetrics)
 
 User read Lo et al. 2025 (Appl. Sci. 15:7081 — same CPBL/Rebas data,
