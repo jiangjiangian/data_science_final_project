@@ -1,0 +1,246 @@
+{
+  "design": "leak-free, prediction-oriented copy of Lo et al. 2025",
+  "evaluation": "walk-forward season-OOF (TimeSeriesSplit n=5); NOT the paper's random 5-fold",
+  "leakage_demo": {
+    "samegame_wOBA_auc": 0.9326259802497822,
+    "pregame_roll_wOBA_auc": 0.4569835443869744,
+    "n_samegame": 665,
+    "n_pregame": 654,
+    "cv": "random KFold(5, shuffle=True) — the paper's design"
+  },
+  "n_post_warmup": 456,
+  "home_win_base_rate": 0.5372807017543859,
+  "leakfree_features": [
+    "diff_wOBA_roll10",
+    "diff_OPS_roll10",
+    "diff_OBP_roll10",
+    "diff_runs_for_roll10",
+    "diff_runs_against_roll10",
+    "diff_sp_FIP_l5",
+    "diff_sp_WHIP_l5",
+    "diff_sp_KBB_l5",
+    "diff_pythag",
+    "diff_rest"
+  ],
+  "model_season_oof": {
+    "LogisticRegression": 0.4831,
+    "DecisionTree": 0.4843,
+    "RandomForest": 0.4915,
+    "XGBoost": 0.4673,
+    "LightGBM": 0.4631,
+    "Stacking(LGBM+RF->LR)": 0.4816
+  },
+  "model_oof_folds": {
+    "LogisticRegression": [
+      0.387,
+      0.44,
+      0.585,
+      0.515,
+      0.619
+    ],
+    "DecisionTree": [
+      0.463,
+      0.487,
+      0.498,
+      0.49,
+      0.495
+    ],
+    "RandomForest": [
+      0.402,
+      0.525,
+      0.528,
+      0.384,
+      0.59
+    ],
+    "XGBoost": [
+      0.383,
+      0.564,
+      0.475,
+      0.414,
+      0.563
+    ],
+    "LightGBM": [
+      0.419,
+      0.531,
+      0.452,
+      0.405,
+      0.567
+    ],
+    "Stacking(LGBM+RF->LR)": null
+  },
+  "leakage_guardrail": "assert season-OOF AUC <= 0.70 per model in BOTH arms + both stacks (fires in-loop; paper's 0.97 would trip it, v1's worst fold 0.584 does not)",
+  "pitch_level_ablation": {
+    "available": true,
+    "feature_sets": {
+      "saber": {
+        "n_features": 10,
+        "features": [
+          "diff_wOBA_roll10",
+          "diff_OPS_roll10",
+          "diff_OBP_roll10",
+          "diff_runs_for_roll10",
+          "diff_runs_against_roll10",
+          "diff_sp_FIP_l5",
+          "diff_sp_WHIP_l5",
+          "diff_sp_KBB_l5",
+          "diff_pythag",
+          "diff_rest"
+        ]
+      },
+      "saber+pitch": {
+        "n_features": 30,
+        "pitch_level_features": [
+          "diff_sp_velo",
+          "diff_sp_velo_slope",
+          "diff_sp_mix_entropy",
+          "diff_sp_zone_pct",
+          "diff_sp_swstr_pct",
+          "diff_sp_fps_pct",
+          "diff_sp_plat_K",
+          "diff_sp_plat_BB",
+          "diff_bat_hardhit",
+          "diff_bat_ld",
+          "diff_bat_gbfb",
+          "diff_bat_chase",
+          "diff_bat_zcontact",
+          "diff_bat_K",
+          "diff_bat_BB",
+          "diff_pen_velo",
+          "diff_pen_swstr",
+          "diff_pen_onbase",
+          "diff_team_WPA_prior_s2d",
+          "diff_team_RE24_prior_s2d"
+        ]
+      }
+    },
+    "season_oof_auc": {
+      "LogisticRegression": {
+        "saber": 0.4831,
+        "saber+pitch": 0.5172
+      },
+      "DecisionTree": {
+        "saber": 0.4843,
+        "saber+pitch": 0.5351
+      },
+      "RandomForest": {
+        "saber": 0.4915,
+        "saber+pitch": 0.5458
+      },
+      "XGBoost": {
+        "saber": 0.4673,
+        "saber+pitch": 0.5355
+      },
+      "LightGBM": {
+        "saber": 0.4631,
+        "saber+pitch": 0.5273
+      },
+      "Stacking(LGBM+RF->LR)": {
+        "saber": 0.4816,
+        "saber+pitch": 0.4499
+      }
+    },
+    "paired_bootstrap_ci": {
+      "LogisticRegression": {
+        "saber": 0.4831,
+        "saber+pitch": 0.5172,
+        "paired_n": 380,
+        "auc_saber_paired": 0.4831,
+        "auc_pitch_paired": 0.5172,
+        "ci_saber": [
+          0.4259,
+          0.5454
+        ],
+        "ci_pitch": [
+          0.4602,
+          0.5719
+        ],
+        "overturn_disjoint_ci": false
+      },
+      "DecisionTree": {
+        "saber": 0.4843,
+        "saber+pitch": 0.5351,
+        "paired_n": 380,
+        "auc_saber_paired": 0.4843,
+        "auc_pitch_paired": 0.5351,
+        "ci_saber": [
+          0.4249,
+          0.5436
+        ],
+        "ci_pitch": [
+          0.4793,
+          0.5902
+        ],
+        "overturn_disjoint_ci": false
+      },
+      "RandomForest": {
+        "saber": 0.4915,
+        "saber+pitch": 0.5458,
+        "paired_n": 380,
+        "auc_saber_paired": 0.4915,
+        "auc_pitch_paired": 0.5458,
+        "ci_saber": [
+          0.4315,
+          0.5508
+        ],
+        "ci_pitch": [
+          0.485,
+          0.6038
+        ],
+        "overturn_disjoint_ci": false
+      },
+      "XGBoost": {
+        "saber": 0.4673,
+        "saber+pitch": 0.5355,
+        "paired_n": 380,
+        "auc_saber_paired": 0.4673,
+        "auc_pitch_paired": 0.5355,
+        "ci_saber": [
+          0.4078,
+          0.5224
+        ],
+        "ci_pitch": [
+          0.4735,
+          0.5919
+        ],
+        "overturn_disjoint_ci": false
+      },
+      "LightGBM": {
+        "saber": 0.4631,
+        "saber+pitch": 0.5273,
+        "paired_n": 380,
+        "auc_saber_paired": 0.4631,
+        "auc_pitch_paired": 0.5273,
+        "ci_saber": [
+          0.4032,
+          0.5169
+        ],
+        "ci_pitch": [
+          0.4668,
+          0.5809
+        ],
+        "overturn_disjoint_ci": false
+      },
+      "Stacking(LGBM+RF->LR)": {
+        "saber": 0.4816,
+        "saber+pitch": 0.4499,
+        "paired_n": 315,
+        "auc_saber_paired": 0.4816,
+        "auc_pitch_paired": 0.4499,
+        "ci_saber": [
+          0.4176,
+          0.5493
+        ],
+        "ci_pitch": [
+          0.3874,
+          0.5154
+        ],
+        "overturn_disjoint_ci": false
+      }
+    },
+    "bootstrap": "1000 resamples, percentile 2.5/97.5; paired (same OOF row indices for both arms within a model)",
+    "overturn_rule": "(ii) auc > (i) auc AND 95% CIs disjoint (lo_ii > hi_i)",
+    "overturn_any_model": false,
+    "figure": "Results/v2/figures/pitch_level_ablation.png"
+  },
+  "interpretation": "Sabermetric-only collapses to ~0.50-0.53 season-OOF (v1's locked negative result). The pitch-level ablation tests whether strictly pre-game pitch-by-pitch features overturn that: no model beats the saber arm beyond overlapping CI -> the negative result extends to pitch-level too. The 0.97-vs-0.53 leakage_demo gap remains the headline methodological contribution."
+}

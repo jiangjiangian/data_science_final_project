@@ -1,0 +1,7 @@
+{
+  "samegame_wOBA_auc": 0.9326259802497822,
+  "pregame_roll_wOBA_auc": 0.4569835443869744,
+  "n_samegame": 665,
+  "n_pregame": 654,
+  "cv": "random KFold(5, shuffle=True) — the paper's design"
+}

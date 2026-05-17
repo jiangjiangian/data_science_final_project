@@ -1,0 +1,13 @@
+feature_set,model,season_oof_auc,n_scored
+saber,LogisticRegression,0.4831,380
+saber,DecisionTree,0.4843,380
+saber,RandomForest,0.4915,380
+saber,XGBoost,0.4673,380
+saber,LightGBM,0.4631,380
+saber,Stacking(LGBM+RF->LR),0.4816,315
+saber+pitch,LogisticRegression,0.5172,380
+saber+pitch,DecisionTree,0.5351,380
+saber+pitch,RandomForest,0.5458,380
+saber+pitch,XGBoost,0.5355,380
+saber+pitch,LightGBM,0.5273,380
+saber+pitch,Stacking(LGBM+RF->LR),0.4499,315

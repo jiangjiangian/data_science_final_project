@@ -1,0 +1,59 @@
+{
+  "saber": [
+    "diff_wOBA_roll10",
+    "diff_OPS_roll10",
+    "diff_OBP_roll10",
+    "diff_runs_for_roll10",
+    "diff_runs_against_roll10",
+    "diff_sp_FIP_l5",
+    "diff_sp_WHIP_l5",
+    "diff_sp_KBB_l5",
+    "diff_pythag",
+    "diff_rest"
+  ],
+  "pitch_level": [
+    "diff_sp_velo",
+    "diff_sp_velo_slope",
+    "diff_sp_mix_entropy",
+    "diff_sp_zone_pct",
+    "diff_sp_swstr_pct",
+    "diff_sp_fps_pct",
+    "diff_sp_plat_K",
+    "diff_sp_plat_BB",
+    "diff_bat_hardhit",
+    "diff_bat_ld",
+    "diff_bat_gbfb",
+    "diff_bat_chase",
+    "diff_bat_zcontact",
+    "diff_bat_K",
+    "diff_bat_BB",
+    "diff_pen_velo",
+    "diff_pen_swstr",
+    "diff_pen_onbase",
+    "diff_team_WPA_prior_s2d",
+    "diff_team_RE24_prior_s2d"
+  ],
+  "strike_zone": {
+    "coordX": [
+      -50.11,
+      53.65
+    ],
+    "coordY": [
+      -51.97,
+      39.73699999999999
+    ],
+    "n_called_strikes": 14412,
+    "rule": "p10..p90 of coordX&coordY over pitchCode=='S' (called strikes) in the frozen calibration window",
+    "calib_cutoff": "2024-01-01"
+  },
+  "platoon_league_shrink_target": {
+    "L": {
+      "K": 0.1593551797040169,
+      "BB": 0.0883985200845666
+    },
+    "R": {
+      "K": 0.1672145845786013,
+      "BB": 0.07710699342498506
+    }
+  }
+}
