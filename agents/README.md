@@ -9,12 +9,12 @@ files never reach the public repo.
 In Claude Code (CLI or Desktop):
 
 ```text
-@goal-definer    please draft Results/01_define_the_goal.md
-@data-collector  run the 2023-10 POC then the full window
-@eda-explorer    knit reports/01_EDA_Patterns.Rmd
-@model-builder   run Phase A; if OK, run Phase B
-@model-evaluator load m1_to_m7_workflow_results.rds and write the verdict
-@shiny-deployer  build app/ and ship to shinyapps.io
+@goal-definer    
+@data-collector  
+@eda-explorer   
+@model-builder   
+@model-evaluator 
+@shiny-deployer 
 ```
 
 In **claude.ai / web** (this surface), you can paste the *Polished XML
@@ -26,42 +26,31 @@ agent file is self-bootstrapping.
 | # | File | Frontmatter `name` | Model | Role |
 |---|---|---|---|---|
 | 1 | `01-goal-definer.md` | `goal-definer` | opus | Charter + success thresholds + risk register |
-| 2 | `02-data-collector.md` | `data-collector` | sonnet | CPBL + CWA crawler with provenance |
-| 3 | `03-eda-explorer.md⭐` | `eda-explorer` | sonnet | Park Factor, PCA, missingness, weather × runs |
+| 2 | `02-data-collector.md` | `data-collector` | opus | CPBL + CWA crawler with provenance |
+| 3 | `03-eda-explorer.md` | `eda-explorer` | opus | Park Factor, PCA, missingness, weather × runs |
 | 4 | `04-model-builder.md`  | `model-builder` | opus | **Phase A POC → Phase B `tidymodels` production** |
 | 5 | `05-model-evaluator.md` | `model-evaluator` | opus | Confusion / calibration / SHAP / fairness |
-| 6 | `06-shiny-deployer.md` | `shiny-deployer` | sonnet | `bslib` dashboard + deploy |
+| 6 | `06-shiny-deployer.md` | `shiny-deployer` | opus | `bslib` dashboard + deploy |
 
 ## Hand-off contract
 
 ```
-goal-definer ──▶ Results/01_define_the_goal.md
+goal-definer ──▶ ????????????
                         │
                         ▼
-data-collector ──▶ data/raw/raw_games.csv
-                   data/raw/raw_weather.csv
-                   data/raw/_provenance/manifest.json
+data-collector ──▶ ????????????
                         │
                         ▼
-eda-explorer ────▶ data/processed/park_factors.rds
-                   data/processed/weather_pca_loadings.csv
-                   reports/01_EDA_Patterns.html
+eda-explorer ────▶ ????????????
                         │
                         ▼
-model-builder ───▶ models/poc/poc_results.rds           ← Phase A
-                   models/m1_to_m7_workflow_results.rds  ← Phase B
-                   models/finalized/top_*.rds
-                   models/_manifest.json
+model-builder ───▶ ????????????
                         │
                         ▼
-model-evaluator ─▶ Results/eval/_selection.json
-                   Results/figures/* (ROC, conf, calib, SHAP, DCA)
-                   Results/05_model_evaluation.md
+model-evaluator ─▶ ????????????
                         │
                         ▼
-shiny-deployer ──▶ app/app.R
-                   Dockerfile + renv.lock
-                   Results/06_deployment.md
+shiny-deployer ──▶ ????????????
 ```
 
 Each downstream agent **must** consume only the documented hand-off
@@ -87,11 +76,10 @@ npx skills find rvest-scraping
 
 | Server | Scope | Notes |
 |---|---|---|
-| GitHub MCP (`mcp__github__*`) | `cde52470/data_science` only | PR creation, commits, file pushes |
 | (others may attach during a session) | — | List via ToolSearch |
 
 ## Conventions inherited from `CLAUDE.md`
-
+- create a single perfect ipynb first. Until the whole pipeline is totally completelly, then transform it into R
 - Tidyverse Style Guide.
 - `here::here()` for paths; no `setwd()`.
 - Secrets via `.Renviron`; never hard-coded.
