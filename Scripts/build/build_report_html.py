@@ -37,19 +37,19 @@ DF = {
     "corr_vs_win": load_csv("stage3/stage3_corr_vs_win.csv"),
     "corr_vs_diff": load_csv("stage3/stage3_corr_vs_run_diff.csv"),
     "skew_kurt": load_csv("stage3/stage3_skew_kurtosis_missing.csv"),
-    "filter_log": load_csv("stage5/stage5_filter_prune_log.csv"),
-    "scaled_describe": load_csv("stage5/stage5_scaled_describe.csv"),
-    "loadings": load_csv("stage5/stage5_pca_loadings_abs.csv"),
-    "k_metrics": load_csv("stage5/stage5_kmeans_metrics.csv"),
-    "gap": load_csv("stage5/stage5_gap_statistic.csv"),
-    "gmm_metrics": load_csv("stage5/stage5_gmm_metrics.csv"),
-    "k_votes": load_csv("stage5/stage5_k_consensus_votes.csv"),
-    "validity": load_csv("stage5/stage5_validity_panel.csv"),
-    "cluster_means": load_csv("stage5/stage5_cluster_means.csv"),
-    "cluster_stds": load_csv("stage5/stage5_cluster_stds.csv"),
-    "shap_per_cluster": load_csv("stage5/stage5_shap_per_cluster.csv"),
-    "meaningful": load_csv("stage5/stage5_meaningful_features.csv"),
-    "xtab": load_csv("stage5/stage5_season_cluster_xtab.csv"),
+    "filter_log": load_csv("stage5/01_filter_scale/stage5_filter_prune_log.csv"),
+    "scaled_describe": load_csv("stage5/01_filter_scale/stage5_scaled_describe.csv"),
+    "loadings": load_csv("stage5/02_pca/stage5_pca_loadings_abs.csv"),
+    "k_metrics": load_csv("stage5/03_k_consensus/stage5_kmeans_metrics.csv"),
+    "gap": load_csv("stage5/03_k_consensus/stage5_gap_statistic.csv"),
+    "gmm_metrics": load_csv("stage5/03_k_consensus/stage5_gmm_metrics.csv"),
+    "k_votes": load_csv("stage5/03_k_consensus/stage5_k_consensus_votes.csv"),
+    "validity": load_csv("stage5/07_validity/stage5_validity_panel.csv"),
+    "cluster_means": load_csv("stage5/09_interpretation/stage5_cluster_means.csv"),
+    "cluster_stds": load_csv("stage5/09_interpretation/stage5_cluster_stds.csv"),
+    "shap_per_cluster": load_csv("stage5/09_interpretation/stage5_shap_per_cluster.csv"),
+    "meaningful": load_csv("stage5/09_interpretation/stage5_meaningful_features.csv"),
+    "xtab": load_csv("stage5/10_cross_season/stage5_season_cluster_xtab.csv"),
     "focus_overlap": load_csv("stage6/stage6_focus_overlap.csv"),
     "new_features": load_csv("stage6/stage6_new_candidate_features.csv"),
     "feature_strategy": load_csv("stage6/stage6_feature_strategy.csv"),
@@ -157,12 +157,12 @@ def build_success_criteria_html() -> str:
 SECTION_OVERRIDES = {
     "0.3": lambda: build_success_criteria_html(),
     "3.2": lambda: render_csv_full("stage3/stage3_per_season_focus.csv"),
-    "5.5": lambda: render_csv_full("stage5/stage5_pca_loadings_abs.csv"),
+    "5.5": lambda: render_csv_full("stage5/02_pca/stage5_pca_loadings_abs.csv"),
     "5.15": lambda: (
         "<h4 class='sub-heading'>Cluster means（按 cluster 0 vs cluster 1 差距大小排序）</h4>"
-        + render_csv_transposed_cluster("stage5/stage5_cluster_means.csv")
+        + render_csv_transposed_cluster("stage5/09_interpretation/stage5_cluster_means.csv")
         + "<h4 class='sub-heading'>Cluster std-dev</h4>"
-        + render_csv_transposed_cluster("stage5/stage5_cluster_stds.csv")
+        + render_csv_transposed_cluster("stage5/09_interpretation/stage5_cluster_stds.csv")
     ),
     "6.3": lambda: (
         "<h4 class='sub-heading'>Research design summary</h4>"

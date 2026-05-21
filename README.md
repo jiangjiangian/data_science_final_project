@@ -40,16 +40,17 @@
 │   ├── stage2/                                  Wang 對照（2 CSV）
 │   ├── stage3/                                  描述統計（6 CSV）
 │   ├── stage4/                                  EDA 視覺化（10 PNG）
-│   ├── stage5/                                  非監督特徵發現（33 檔）
-│   │   ├── 篩選與標準化（5.1-5.2）
-│   │   ├── PCA（5.3-5.6）
-│   │   ├── K 共識六方法投票（5.7）
-│   │   ├── 階層分群最佳化：4 linkage + balance gate（5.8）
-│   │   ├── GMM / HDBSCAN（5.9-5.10）
-│   │   ├── Validity + per-point silhouette（5.11-5.12）
-│   │   ├── 降維 sanity：UMAP / t-SNE（5.13-5.14）
-│   │   ├── 群解讀：means / radar / notched box / SHAP / ANOVA F + MI（5.15-5.18a）
-│   │   └── 跨季比較：xtab / freq shift / Sankey（5.19）
+│   ├── stage5/                                  非監督特徵發現（33 檔，分 10 子資料夾）
+│   │   ├── 01_filter_scale/                         5.1-5.2 篩選與標準化（2 檔）
+│   │   ├── 02_pca/                                  5.3-5.6 主成分分析（5 檔）
+│   │   ├── 03_k_consensus/                          5.7 K 值六方法共識投票（5 檔）
+│   │   ├── 04_hierarchy/                            5.8 階層分群最佳化：4 linkage + balance gate（5 檔）
+│   │   ├── 05_gmm/                                  5.9 GMM（1 檔）
+│   │   ├── 06_hdbscan/                              5.10 HDBSCAN（1 檔）
+│   │   ├── 07_validity/                             5.11-5.12 演算法比較 + per-point silhouette（2 檔）
+│   │   ├── 08_embeddings/                           5.13-5.14 UMAP / t-SNE（2 檔）
+│   │   ├── 09_interpretation/                       5.15-5.18a 群解讀（7 檔）
+│   │   └── 10_cross_season/                         5.19 跨季比較（3 檔）
 │   └── stage6/                                  綜合整理（4 CSV）
 │
 └── docs/
