@@ -1,6 +1,7 @@
-# Python deps for the canonical pipeline (`scripts/`). Pinned to ranges that
-# scripts/run_all.py exercised in Colab. Install with:
-#   pip install -r requirements.txt
+# Python deps for the canonical Colab notebooks
+# (python/cpbl_pipeline.ipynb v1, python/cpbl_pipeline_v2.ipynb v2).
+# Versions are the floors the notebook was last verified against.
+# Install with:  pip install -r requirements.txt
 #
 # Numeric stack
 numpy>=1.26
@@ -16,4 +17,5 @@ shap>=0.44
 matplotlib>=3.8
 seaborn>=0.13
 joblib>=1.3
-requests>=2.31  # used by step1b_fetch_weather.py (Open-Meteo)
+requests>=2.31   # Open-Meteo Archive (step1b weather fetch)
+ipykernel>=6.29  # to run the notebooks locally with `jupyter` / `papermill`
