@@ -11,6 +11,11 @@ __pycache__/
 Derived/
 data/processed/
 
+# Runtime side-effects created by jupyter nbconvert when cwd is Scripts/
+**/.fonts/
+Scripts/data/
+**/cpbl_pregame_winprob*-checkpoint*
+
 # Results scratch outputs (Results/stage*/ ARE committed; these are intermediate)
 Results/cpbl_artifacts/
 Results/cpbl_artifacts.zip
