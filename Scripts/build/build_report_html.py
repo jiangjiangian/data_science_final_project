@@ -99,6 +99,80 @@ def cell_outputs_by_section():
 CELL_OUTS = cell_outputs_by_section()
 
 
+def md_to_html(text: str) -> str:
+    """Convert a small subset of markdown to HTML: **bold**, *italic*, `code`, newlines."""
+    h = html.escape(text)
+    h = re.sub(r"\*\*([^\n*]+?)\*\*", r"<strong>\1</strong>", h)
+    h = re.sub(r"(?<!\*)\*([^\n*]+?)\*(?!\*)", r"<em>\1</em>", h)
+    h = re.sub(r"`([^`\n]+?)`", r"<code>\1</code>", h)
+    # Render table-like content (rare in our markdown outputs)
+    h = h.replace("\n\n", "</p><p>")
+    h = h.replace("\n", "<br>")
+    return f'<div class="md-out"><p>{h}</p></div>'
+
+
+def render_csv_full(rel_path: str, drop_unnamed=True, classes="full-table") -> str:
+    df = load_csv(rel_path)
+    if df is None:
+        return f'<p><em>(missing {rel_path})</em></p>'
+    if drop_unnamed:
+        df = df.loc[:, ~df.columns.str.match(r"Unnamed: \d+")]
+    pd.set_option("display.max_colwidth", None)
+    return f'<div class="table-wrap">{df.to_html(index=False, escape=True, classes=classes, na_rep="")}</div>'
+
+
+def render_csv_transposed_cluster(rel_path: str, classes="full-table") -> str:
+    df = load_csv(rel_path)
+    if df is None:
+        return f'<p><em>(missing {rel_path})</em></p>'
+    df = df.loc[:, ~df.columns.str.match(r"Unnamed: \d+")]
+    if "cluster" in df.columns:
+        df = df.set_index("cluster").T
+        df.columns = [f"cluster {c}" for c in df.columns]
+        df.index.name = "feature"
+        df = df.reset_index()
+        # Sort by absolute mean difference to highlight cluster-defining features
+        if "cluster 0" in df.columns and "cluster 1" in df.columns:
+            df["|gap|"] = (df["cluster 0"] - df["cluster 1"]).abs()
+            df = df.sort_values("|gap|", ascending=False).drop(columns="|gap|").reset_index(drop=True)
+    pd.set_option("display.max_colwidth", None)
+    return f'<div class="table-wrap">{df.to_html(index=False, escape=True, classes=classes, na_rep="", float_format=lambda x: f"{x:.3f}")}</div>'
+
+
+def build_success_criteria_html() -> str:
+    rows = [
+        ("1 資料取得", "能直接從 rebas.tw GitHub Releases 下載 2023 G1-G300 與 2024 regular season OpenData zip。"),
+        ("2 前處理", "合併後至少 1,200 筆 team-game rows，且主要數值欄位缺失率低。"),
+        ("3 描述統計", "輸出整體、球季、球隊、主客場切片，並計算 Pearson/Spearman 與目標欄位關聯。"),
+        ("4 EDA", "產生多張圖表，能檢查分布、相關性、主客場差異、球季差異與球隊差異。"),
+        ("5 非監督特徵發現", "完成篩選、標準化、PCA、K-Means/Ward/GMM/HDBSCAN 比較，並選出可解釋 cluster。"),
+        ("6 綜合整理", "以本 notebook 自己的結果列出保留、增添與可行的 original/derived features。"),
+        ("7 匯出", "輸出 original + derived features CSV、feature catalog、比較表，供後續 model 使用。"),
+    ]
+    df = pd.DataFrame(rows, columns=["階段", "成功標準"])
+    return f'<div class="table-wrap">{df.to_html(index=False, escape=True, classes="full-table")}</div>'
+
+
+# Override entire section's output HTML when the executed text/html is truncated
+SECTION_OVERRIDES = {
+    "0.3": lambda: build_success_criteria_html(),
+    "3.2": lambda: render_csv_full("stage3/stage3_per_season_focus.csv"),
+    "5.5": lambda: render_csv_full("stage5/stage5_pca_loadings_abs.csv"),
+    "5.15": lambda: (
+        "<h4 class='sub-heading'>Cluster means（按 cluster 0 vs cluster 1 差距大小排序）</h4>"
+        + render_csv_transposed_cluster("stage5/stage5_cluster_means.csv")
+        + "<h4 class='sub-heading'>Cluster std-dev</h4>"
+        + render_csv_transposed_cluster("stage5/stage5_cluster_stds.csv")
+    ),
+    "6.3": lambda: (
+        "<h4 class='sub-heading'>Research design summary</h4>"
+        + render_csv_full("stage6/stage6_research_design_summary.csv")
+        + "<h4 class='sub-heading'>Feature strategy</h4>"
+        + render_csv_full("stage6/stage6_feature_strategy.csv")
+    ),
+}
+
+
 def render_out(o, max_text_lines=20):
     if o['type'] == 'png':
         return f'<img src="data:image/png;base64,{o["data"]}" alt="figure">'
@@ -116,7 +190,7 @@ def render_out(o, max_text_lines=20):
         # HTML representation of pandas DataFrame
         return f'<div class="table-wrap">{o["data"]}</div>'
     if o['type'] == 'markdown':
-        return f'<div class="md-out">{html.escape(o["data"]).replace(chr(10), "<br>")}</div>'
+        return md_to_html(o['data'])
     if o['type'] in ('text', 'stream'):
         # Crop long streams
         text = o['data']
@@ -700,7 +774,10 @@ def render_section(sid):
     if sid not in SECTION_EXPL:
         return ""
     title, expl = SECTION_EXPL[sid]
-    output_html = render_section_outputs(sid)
+    if sid in SECTION_OVERRIDES:
+        output_html = SECTION_OVERRIDES[sid]()
+    else:
+        output_html = render_section_outputs(sid)
     if not output_html and not expl:
         return ""
     parts = [f'<div class="section">']
@@ -808,15 +885,27 @@ h3.sec-head {
 }
 .outputs img { max-width: 100%; height: auto; display: block; margin: 0.5rem auto; }
 .outputs .table-wrap {
-    overflow-x: auto; max-height: 500px; overflow-y: auto;
+    overflow-x: auto; overflow-y: visible;
     border: 1px solid #eee; border-radius: 4px;
+    margin: 0.5rem 0;
 }
 .outputs table {
     border-collapse: collapse; margin: 0; font-size: 0.85rem;
+    white-space: normal; word-break: break-word;
 }
-.outputs th, .outputs td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
-.outputs th { background: #f4f4f4; font-weight: 600; }
+.outputs th, .outputs td {
+    border: 1px solid #ddd; padding: 5px 9px; text-align: left;
+    vertical-align: top;
+}
+.outputs th { background: #f4f4f4; font-weight: 600; white-space: nowrap; }
 .outputs tr:nth-child(even) { background: #fafafa; }
+.outputs table.full-table td:nth-child(n+2) { max-width: 720px; }
+.outputs h4.sub-heading {
+    color: #5a3aa0; font-size: 1rem; margin: 1.2rem 0 0.4rem 0;
+    border-bottom: 1px dashed #ccc; padding-bottom: 0.2rem;
+}
+.outputs .md-out p { margin: 0.4rem 0; }
+.outputs .md-out strong { color: #1a3a5e; }
 .outputs .stream {
     background: #f7f7f7; padding: 0.6rem 0.9rem; border-radius: 4px;
     font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem;
