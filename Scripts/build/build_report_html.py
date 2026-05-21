@@ -287,10 +287,11 @@ def validity_summary():
             f"silhouette={r['silhouette']:+.3f}, CH={r['CH']:.1f}, "
             f"DBI={r['DBI']:.2f}, Jaccard={r['bootstrap_jaccard']:.3f}"
         )
-    return "三個演算法的 validity 表：<br>" + "<br>".join(rows) + (
-        "<br><br>三個算法中只有 <code>kmeans (k=2)</code> 的 bootstrap-Jaccard (0.918) 通過"
-        " ≥ 0.75 的穩定性門檻，因此被選為最終 cluster 結構；其 silhouette 0.115 偏低，"
-        "顯示 pre-game 狀態空間是連續譜而非清楚分群。"
+    return "三個演算法的 validity 表（hierarchical 用 Stage 5.8 balance-gated 選出的 ward k=2）：<br>" + "<br>".join(rows) + (
+        "<br><br>三個算法的對照：kmeans 與 hierarchy[ward] 都在 k=2，silhouette 接近 (0.115 vs 0.100)，"
+        "但 bootstrap-Jaccard 差距明顯（kmeans 0.918 vs ward 0.574）——kmeans 的 cluster 邊界在 80% 子抽樣下穩定得多。"
+        "因此最終選 <code>kmeans (k=2)</code> 作為 final cluster。其 silhouette 0.115 仍偏低，"
+        "顯示 pre-game 狀態空間是連續譜而非清楚分群，但 Jaccard 0.918 證明這個切法本身穩定可重現。"
     )
 
 
@@ -602,11 +603,23 @@ SECTION_EXPL = {
         "選 k=2 是最 conservative 的「正面 vs 負面狀態」二分法；k=3 可細分「強/中/弱」三段，"
         "k=4 可進一步把對手強度也納入軸；都是合理選擇，差別在於「想要的細粒度」。</p>"
     ),
-    "5.8": ("Ward 階層分群",
-        "<p>Ward linkage dendrogram，截斷顯示最後 30 次 merge；標題印出 cophenetic correlation。</p>"
-        "<p><strong>圖中實際呈現：</strong>dendrogram 頂端有 1 個顯著的長 vertical bar（最後一次大合併，高度約 220+）"
-        "對應 k=2 的切點；往下是若干次中等高度的 merges（k=3-5）。"
-        "整體形狀像「兩條粗主幹各帶幾個分支」——支持 k=2 為主要結構、k=3 為次要結構。</p>"
+    "5.8": ("階層分群最佳化：四種 linkage 比較 + 平衡 gate",
+        "<p>輸出：4-linkage cophenetic 比較表、4-panel dendrogram、silhouette × min-cluster-fraction 雙圖。最終 HIERARCHY_METHOD = <code>ward</code>, K_HIER = 2。</p>"
+        "<p><strong>圖表中實際呈現的結論：</strong>"
+        "<ul>"
+        "<li>四種 linkage 的 cophenetic 相關係數排名："
+        "<code>average</code> = 0.647 (最高，但每個 k 都 fails balance gate)、"
+        "<code>single</code> = 0.566 (同樣 fails)、"
+        "<code>complete</code> = 0.377、"
+        "<code>ward</code> = 0.327。</li>"
+        "<li><strong>關鍵發現：</strong>單純看 cophenetic 會選 average，但 average linkage 在 k=2 的切法是 1315 vs 5（外點獨立成小群），silhouette 看似漂亮 (0.504) 但分析沒意義；single 同樣只會切外點。所以我們加上 min_cluster_frac ≥ 5% 的 balance gate，這兩種 linkage 被全數淘汰。</li>"
+        "<li>通過 balance gate 的：<code>ward</code> k=2 (silhouette 0.1002, min fraction 0.2424) 與 <code>complete</code> k=2 (silhouette 0.0984, min fraction 0.2492)。Ward 些微勝出。</li>"
+        "<li>dendrogram 4-panel 視覺呈現：average / single 的樹結構頂部極不平衡（一大條 + 數條極短）；ward / complete 的樹較對稱、層級分明，視覺上也合理。</li>"
+        "<li>silhouette × balance 雙圖：silhouette 圖上 average / single 在 k=2 都接近 0.5（誤導性高分），但 balance 圖上他們的最小群比例在所有 k 都 &lt; 0.01（紅線下），被 gate 直接濾掉。Ward / complete 兩條都在 balance 線之上，silhouette 也合理。</li>"
+        "</ul></p>"
+        "<p><strong>解讀：</strong>這格回應了「用 cophenetic 選 linkage」的標準教學——但教學書常忽略「外點獨立成小群」會給出虛假的高分。"
+        "Balance gate 把這種退化解過濾掉後，ward 雖然 cophenetic 偏低 (0.327)，反而是「在能保證群平衡的前提下」的最佳 linkage。"
+        "這個發現直接影響 Stage 5.11：hierarchical 那一列現在用 <code>ward</code> k=2 而非 average，與 K-Means / GMM 做公平比較。</p>"
     ),
     "5.9": ("GMM BIC / AIC",
         "<p>k=2..10 的 BIC（藍）與 AIC（橘）曲線。</p>"
