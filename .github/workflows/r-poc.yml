@@ -64,10 +64,10 @@ jobs:
       - name: Sanity check — R scripts have no syntax errors
         run: |
           set -e
-          for f in R/elo_pythag.R R/build_recipes.R \
-                   R/00_synthetic_smoke.R \
-                   R/03a_phase_a_poc.R \
-                   R/00_session_info.R; do
+          for f in R/elo_pythag.R R/poc/build_recipes.R \
+                   R/poc/00_synthetic_smoke.R \
+                   R/poc/03a_phase_a_poc.R \
+                   R/poc/00_session_info.R; do
             echo "=== Parsing $f ==="
             Rscript -e "parse(file = '$f'); cat('OK:', '$f', '\\n')"
           done
@@ -75,18 +75,18 @@ jobs:
       - name: Generate synthetic data
         run: |
           mkdir -p data/processed
-          Rscript R/00_synthetic_smoke.R
+          Rscript R/poc/00_synthetic_smoke.R
 
       - name: Run Phase A POC pipeline
         run: |
           mkdir -p models/poc Results/figures
-          Rscript R/03a_phase_a_poc.R
+          Rscript R/poc/03a_phase_a_poc.R
 
       - name: Dump session info
         if: always()
         run: |
           mkdir -p Results
-          Rscript R/00_session_info.R || true
+          Rscript R/poc/00_session_info.R || true
 
       - name: Upload POC artefacts
         if: always()

@@ -1,5 +1,5 @@
 # ============================================================================
-# File   : R/fetch_cwa.R
+# File   : R/mirrors/fetch_cwa.R
 # Purpose: Fetch hourly historical weather observations for each CPBL game and
 #          join to data/processed/raw_games.csv -> games_with_weather.csv.
 #
@@ -17,8 +17,8 @@
 # 用法 (Colab / 本機 RStudio):
 #   install.packages(c("httr2","jsonlite","dplyr","tidyr","readr",
 #                      "lubridate","memoise","cachem","logger","here"))
-#   source("R/load_rebas_data.R")   # 先生成 data/processed/raw_games.csv
-#   source("R/fetch_cwa.R")         # 再跑這個
+#   source("R/mirrors/load_rebas_data.R")  # 先生成 data/processed/raw_games.csv
+#   source("R/mirrors/fetch_cwa.R")         # 再跑這個
 # ============================================================================
 
 suppressPackageStartupMessages({

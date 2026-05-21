@@ -1,5 +1,5 @@
 # ============================================================================
-# File   : R/03a_phase_a_poc.R
+# File   : R/poc/03a_phase_a_poc.R
 # Purpose: Phase A POC pipeline — fit m1-m7 on synthetic CPBL data, prove the
 #          wiring works end-to-end before Phase B touches real season data.
 # Author : Sub-Agent 4 (model-builder)
@@ -7,9 +7,9 @@
 # ============================================================================
 
 # 本腳本是 model-builder Phase A 的 entry point. 它 *只* 做 wiring 驗證:
-#   1. 讀 synthetic_games.csv (由 R/00_synthetic_smoke.R 產出)
+#   1. 讀 synthetic_games.csv (由 R/poc/00_synthetic_smoke.R 產出)
 #   2. 用 R/elo_pythag.R 重算 team-strength 欄位 (取代 smoke 的 jitter)
-#   3. 用 R/build_recipes.R 拿到 m1-m7 七張 recipes
+#   3. 用 R/poc/build_recipes.R 拿到 m1-m7 七張 recipes
 #   4. time-aware split (charter §6.1 + CLAUDE.md §6 rule 5)
 #   5. fit m1-m7 (parsnip + glm), m7 多 fit 一個 glmnet 變體
 #   6. yardstick 收集 roc_auc / pr_auc / brier_class / accuracy / f1
@@ -42,7 +42,7 @@ set.seed(42)
 # ---- config ----------------------------------------------------------------
 config <- list(
   in_path        = here::here("data", "processed", "synthetic_games.csv"),
-  recipes_path   = here::here("R", "build_recipes.R"),
+  recipes_path   = here::here("R", "poc", "build_recipes.R"),
   elo_path       = here::here("R", "elo_pythag.R"),
   out_rds        = here::here("models", "poc", "poc_results.rds"),
   out_csv        = here::here("Results", "figures",
@@ -65,7 +65,7 @@ source(config$recipes_path, local = FALSE)
 if (!file.exists(config$in_path)) {
   stop(
     "synthetic_games.csv not found at ", config$in_path,
-    "\nRun: source(here::here('R/00_synthetic_smoke.R'))",
+    "\nRun: source(here::here('R/poc/00_synthetic_smoke.R'))",
     " first."
   )
 }
@@ -101,7 +101,7 @@ enriched <- core |>
 
 # 加 team-strength diff columns (給 m2 / m5 / m6 / m7 用)
 enriched <- enriched |>
-  add_team_strength_diffs()    # 來自 R/build_recipes.R
+  add_team_strength_diffs()    # 來自 R/poc/build_recipes.R
 
 # 模型 frame (POC 只保留必要欄位 + outcome)
 model_frame <- enriched |>
@@ -269,5 +269,5 @@ log_info("Wrote {config$out_csv}")
 
 log_info("=== Phase A POC done ===")
 
-# session info gets dumped by R/00_session_info.R as a separate step.
+# session info gets dumped by R/poc/00_session_info.R as a separate step.
 invisible(scores_wide)

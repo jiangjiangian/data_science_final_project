@@ -1,5 +1,5 @@
 # ============================================================================
-# File   : R/load_rebas_data.R
+# File   : R/mirrors/load_rebas_data.R
 # Purpose: R mirror of scripts/step1_build_raw_games.py. Loads rebas
 #          v0.1.0-2024 OpenData/Challenge/TaiwanSeries JSONs, re-aggregates
 #          batterBox SEPARATELY for home and away, normalises stadium 11->8,
@@ -7,7 +7,7 @@
 #
 # 用法 (RStudio / Colab 本機):
 #   1. 把三個 zip 解到 data/raw/rebas_v0.1.0-2024/ 底下
-#   2. source("R/load_rebas_data.R")
+#   2. source("R/mirrors/load_rebas_data.R")
 # ============================================================================
 
 suppressPackageStartupMessages({

@@ -1,5 +1,5 @@
 # ============================================================================
-# File   : R/build_recipes.R
+# File   : R/poc/build_recipes.R
 # Purpose: tidymodels `recipe()` objects for m1 – m7 progressive ablation.
 #          Matches charter amendment #2 (team-strength is m2, not stadium).
 # Author : Sub-Agent 4 (model-builder)

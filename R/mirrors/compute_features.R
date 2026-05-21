@@ -1,7 +1,7 @@
 # ============================================================================
-# File   : R/compute_features.R
+# File   : R/mirrors/compute_features.R
 # Purpose: R mirror of scripts/step2_features.py. Takes
-#          data/processed/raw_games.csv (output of R/load_rebas_data.R), adds
+#          data/processed/raw_games.csv (output of R/mirrors/load_rebas_data.R), adds
 #          - Elo (uses R/elo_pythag.R)
 #          - Pythagenpat 30g (uses R/elo_pythag.R)
 #          - rest_days (uses R/elo_pythag.R)
@@ -13,8 +13,8 @@
 #          and writes data/processed/model_ready_data.csv.
 #
 # 用法 (RStudio / Colab):
-#   source("R/load_rebas_data.R")   # 先建 raw_games.csv
-#   source("R/compute_features.R")  # 然後跑特徵工程
+#   source("R/mirrors/load_rebas_data.R")   # 先建 raw_games.csv
+#   source("R/mirrors/compute_features.R")  # 然後跑特徵工程
 # ============================================================================
 
 suppressPackageStartupMessages({
