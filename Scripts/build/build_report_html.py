@@ -723,7 +723,7 @@ def render_section(sid):
         output_html = SECTION_OVERRIDES[sid]()
     else:
         output_html = render_section_outputs(sid)
-    parts = [f'<div class="section">']
+    parts = [f'<div class="section" id="sec-{sid}">']
     parts.append(f'<h3 class="sec-head">{sid} — {html.escape(title)}</h3>')
     if pre:
         parts.append(f'<div class="pre-explanation"><div class="badge">如何解讀</div>{pre}</div>')
@@ -753,7 +753,7 @@ STAGES = [
 
 
 def render_stage(num, title, sids):
-    parts = [f'<section id="stage-{num}" class="stage">']
+    parts = [f'<section id="stage-{num}" class="tab-page stage">']
     parts.append(f'<h2>{html.escape(title)}</h2>')
     summary = STAGE_SUMMARIES.get(num, [])
     if summary:
@@ -765,6 +765,102 @@ def render_stage(num, title, sids):
         parts.append(render_section(sid))
     parts.append('</section>')
     return '\n'.join(parts)
+
+
+def render_sidebar():
+    """Hierarchical sidebar with collapsible stages + sub-section links."""
+    parts = [
+        '<aside class="sidebar">',
+        '<h3 class="sb-title">CPBL 報告</h3>',
+        '<div class="pin-top"><a href="#home" data-target="home">首頁 · 流程圖 · 摘要</a></div>',
+        '<ul class="nav-top">',
+    ]
+    for num, title, sids in STAGES:
+        # Stage link
+        short_title = title.replace(f"Stage {num} — ", "")
+        parts.append(f'<li>')
+        parts.append(f'<details><summary><a href="#stage-{num}" data-target="stage-{num}">Stage {num} · {html.escape(short_title)}</a></summary>')
+        parts.append('<ul class="subsections">')
+        for sid in sids:
+            if sid in SECTION_EXPL:
+                sec_title = SECTION_EXPL[sid][0]
+                parts.append(f'<li><a href="#sec-{sid}" data-target="stage-{num}" data-scroll="sec-{sid}">{sid} · {html.escape(sec_title)}</a></li>')
+        parts.append('</ul></details></li>')
+    parts.append('</ul>')
+    parts.append('</aside>')
+    return '\n'.join(parts)
+
+
+SIDEBAR_JS = """
+<script>
+function activateTab(tabId, scrollTo) {
+    document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+    const target = document.getElementById(tabId);
+    if (target) target.classList.add('active');
+    document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+    if (scrollTo) {
+        const lk = document.querySelector('.sidebar a[href="#' + scrollTo + '"]');
+        if (lk) lk.classList.add('active');
+        requestAnimationFrame(() => {
+            const el = document.getElementById(scrollTo);
+            if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+        });
+    } else {
+        const lk = document.querySelector('.sidebar a[href="#' + tabId + '"]');
+        if (lk) lk.classList.add('active');
+        document.querySelector('main.content').scrollTo(0, 0);
+        window.scrollTo(0, 0);
+    }
+    // Ensure parent details is open if clicking a sub-section
+    if (scrollTo) {
+        const lk = document.querySelector('.sidebar a[href="#' + scrollTo + '"]');
+        if (lk) {
+            const det = lk.closest('details');
+            if (det) det.open = true;
+        }
+    }
+}
+
+function resolveAndActivate(hash) {
+    if (!hash) { activateTab('home'); return; }
+    const id = hash.startsWith('#') ? hash.slice(1) : hash;
+    if (id === 'home') { activateTab('home'); return; }
+    if (id.startsWith('stage-')) { activateTab(id); return; }
+    if (id.startsWith('sec-')) {
+        const sec = document.getElementById(id);
+        const parent = sec ? sec.closest('section.tab-page') : null;
+        if (parent) activateTab(parent.id, id);
+        else activateTab('home');
+        return;
+    }
+    activateTab('home');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.sidebar a').forEach(link => {
+        link.addEventListener('click', e => {
+            const href = link.getAttribute('href');
+            if (!href || !href.startsWith('#')) return;
+            e.preventDefault();
+            const id = href.slice(1);
+            if (id.startsWith('stage-') || id === 'home') {
+                activateTab(id);
+                history.replaceState(null, '', '#' + id);
+            } else if (id.startsWith('sec-')) {
+                const sec = document.getElementById(id);
+                const parent = sec ? sec.closest('section.tab-page') : null;
+                if (parent) {
+                    activateTab(parent.id, id);
+                    history.replaceState(null, '', '#' + id);
+                }
+            }
+        });
+    });
+    window.addEventListener('hashchange', () => resolveAndActivate(location.hash));
+    resolveAndActivate(location.hash);
+});
+</script>
+"""
 
 
 MERMAID = """
@@ -807,10 +903,123 @@ flowchart TD
 CSS = """
 * { box-sizing: border-box; }
 body {
+    margin: 0; padding: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK TC",
                  "PingFang TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif;
-    max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem;
     line-height: 1.7; color: #222; background: #fafafa;
+}
+.app { display: flex; min-height: 100vh; }
+
+/* === Sidebar === */
+.sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: #fff;
+    border-right: 1px solid #e0e0e0;
+    padding: 1.2rem 0.6rem;
+    font-size: 0.9rem;
+}
+.sidebar h3.sb-title {
+    font-size: 1.05rem;
+    color: #1a3a5e;
+    margin: 0 0.5rem 0.8rem 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid #1a73e8;
+}
+.sidebar .nav-top {
+    list-style: none;
+    margin: 0; padding: 0;
+}
+.sidebar details {
+    margin: 0.1rem 0;
+    border-radius: 6px;
+    background: transparent;
+    transition: background 0.15s;
+}
+.sidebar details[open] { background: #f3f7fb; }
+.sidebar summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.45rem 0.55rem 0.45rem 0.85rem;
+    border-radius: 6px;
+    color: #1a3a5e;
+    font-weight: 600;
+    font-size: 0.92rem;
+    user-select: none;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.sidebar summary::-webkit-details-marker { display: none; }
+.sidebar summary::before {
+    content: "▸";
+    display: inline-block;
+    width: 0.9rem;
+    margin-right: 0.3rem;
+    transition: transform 0.15s;
+    color: #999;
+    font-size: 0.85rem;
+}
+.sidebar details[open] summary::before { transform: rotate(90deg); }
+.sidebar summary:hover { background: #eaf2fc; }
+.sidebar summary a {
+    color: inherit; text-decoration: none; flex: 1;
+}
+.sidebar ul.subsections {
+    list-style: none;
+    margin: 0.2rem 0 0.4rem 0;
+    padding: 0;
+}
+.sidebar ul.subsections li {
+    margin: 0;
+}
+.sidebar ul.subsections a {
+    display: block;
+    padding: 0.32rem 0.6rem 0.32rem 2rem;
+    color: #444;
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    border-left: 2px solid transparent;
+}
+.sidebar ul.subsections a:hover {
+    background: #eaf2fc;
+    color: #1a73e8;
+    border-left-color: #1a73e8;
+}
+.sidebar ul.subsections a.active {
+    background: #fff3cd;
+    color: #1a3a5e;
+    font-weight: 600;
+    border-left-color: #f9a825;
+}
+.sidebar .pin-top {
+    margin: 0 0.5rem 1rem 0.5rem;
+    padding: 0.5rem 0.7rem;
+    background: #f3e5f5;
+    border-left: 3px solid #7b1fa2;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+.sidebar .pin-top a {
+    color: #4a148c;
+    text-decoration: none;
+    display: block;
+    padding: 0.2rem 0;
+    font-weight: 600;
+}
+.sidebar .pin-top a:hover { color: #1a73e8; }
+
+/* === Main content === */
+main.content {
+    flex: 1;
+    max-width: 1100px;
+    padding: 1.8rem 2rem;
 }
 h1 { font-size: 2rem; border-bottom: 3px solid #1a73e8; padding-bottom: 0.5rem; margin-bottom: 0.5rem; color: #1a3a5e; }
 h2 { font-size: 1.5rem; color: #1a73e8; border-bottom: 1px solid #cfd8dc; padding-bottom: 0.3rem; margin-top: 3rem; }
@@ -895,72 +1104,137 @@ h3.sec-head { font-size: 1.15rem; color: #5a3aa0; margin-top: 2rem; }
 }
 .plotly-fig { width: 100%; }
 footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid #ccc; color: #888; font-size: 0.85rem; text-align: center; }
+
+/* === Tab pages: only the active one shows === */
+.tab-page { display: none; }
+.tab-page.active { display: block; animation: fadein 0.18s ease-out; }
+@keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Home tab styling */
+.convention-note {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-left: 4px solid #5a3aa0;
+    padding: 0.8rem 1.2rem;
+    border-radius: 0 6px 6px 0;
+    margin: 1rem 0 1.5rem 0;
+    font-size: 0.95rem;
+    line-height: 1.7;
+}
+.badge-inline {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #fff;
+}
+.badge-inline.pre-badge { background: #f9a825; }
+.badge-inline.post-badge { background: #1976d2; }
+.result-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+.result-table th, .result-table td {
+    border: 1px solid #cfd8dc;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 0.95rem;
+}
+.result-table th { background: #e8f4fd; color: #1a3a5e; font-weight: 600; }
+.result-table tr:nth-child(even) { background: #fafafa; }
+
+/* Responsive — collapse sidebar on narrow screens */
+@media (max-width: 900px) {
+    .app { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; max-height: 50vh; position: relative; border-right: none; border-bottom: 1px solid #e0e0e0; }
+    main.content { padding: 1rem; }
+}
+
+/* Scroll offset so anchor jumps don't hide the heading under sidebar */
+.section, section.tab-page, h2 { scroll-margin-top: 1rem; }
 """
 
 
 def build_html():
+    sidebar = render_sidebar()
     body_stages = "\n".join(render_stage(num, title, sids) for num, title, sids in STAGES)
-    toc_items = "\n".join(
-        f'<li><a href="#stage-{num}">{html.escape(title)}</a></li>'
-        for num, title, _ in STAGES
-    )
+    home_tab = f"""
+<section class=\"tab-page\" id=\"home\">
+  <h1>CPBL 2023-2024 非監督式特徵發現 — 結果報告</h1>
+  <p class=\"subtitle\">114-2 資料科學期末專題 · pre-game leak-free feature discovery · 主 notebook：
+  <code>Scripts/cpbl_unsupervised_feature_discovery.ipynb</code></p>
+
+  <div class=\"convention-note\">
+    本報告每個 cell 採三段式呈現：
+    <span class=\"badge-inline pre-badge\">如何解讀</span>（在輸出之前的讀法指引 + 越大越好 / 越小越好 / 越接近 X 越好標註）
+    → 渲染後的圖表 / 表格 / plotly →
+    <span class=\"badge-inline post-badge\">本次結果與意義</span>（基於實際 CSV 數據的觀察與解讀）。<br>
+    左側可點選任一 Stage 或子節 (如 5.18a) 直接跳到對應 tab。
+  </div>
+
+  <h2>Pipeline 流程圖</h2>
+  <div class=\"mermaid-wrap\">
+  <pre class=\"mermaid\">
+{MERMAID}
+  </pre>
+  </div>
+
+  <h2>Executive Summary（一頁摘要）</h2>
+  <div class=\"stage-summary\">
+  <p>本研究從 rebas.tw 官方 release 取得 CPBL 2023 + 2024 共 ~660 場原始比賽，建構 1320 列 team-game features。對學長 supervised pipeline 的最大改進：</p>
+  <ol>
+  <li><strong>Pre-game gate</strong>：建立 60+ 個 <code>prior_*</code> / <code>opp_prior_*</code> 滾動 lag features，讓 unsupervised 階段只看比賽前可知資訊，<code>cluster_id</code> 可作為 leak-free 預測因子。</li>
+  <li><strong>K 值六方法共識投票</strong>：避免「只看 silhouette」單一指標誤判。本次 k=2 與 k=3 並列第一，採最小 k=2。</li>
+  <li><strong>階層分群最佳化</strong>：4 種 linkage + balance gate 過濾「外點隔離」退化解；average linkage cophenetic 最高 (0.647) 卻被 gate 過濾（1315 vs 5 split），最終 hierarchy 採 ward k=2。</li>
+  <li><strong>Wang 對照驗證</strong>：32/44 數值欄位的 Pearson r ≥ 0.999，確認 Python port 在數值上完全等價於 Wang 的 R 實作。</li>
+  </ol>
+  <p><strong>最終 cluster 結構</strong>：KMeans k=2，silhouette 0.115（偏低）、bootstrap-Jaccard 0.918（很高）——「連續譜被切兩半」型態。cluster_id 的意義是「最近 5-10 場的 run_diff 是正還是負」（自我 + 對手雙軸）。</p>
+  <p><strong>新增候選 features (8 個)</strong>給下游 supervised 模型：<code>cluster_id</code>、<code>gmm_p0-p3</code>、<code>pc1-pc3</code>。</p>
+  </div>
+
+  <h2>本次最終 cluster 結果（快速一覽）</h2>
+  <table class=\"result-table\">
+  <tr><th>項目</th><th>數值</th></tr>
+  <tr><td>Team-game rows</td><td>1320（2023+2024 去重後）</td></tr>
+  <tr><td>Pre-game ready</td><td>1308 / 1320（99.1%）</td></tr>
+  <tr><td>Wang 對照 Pearson r ≥ 0.999</td><td>32 / 44 數值欄</td></tr>
+  <tr><td>PCs 至 90% 累積 PVE</td><td>24</td></tr>
+  <tr><td>K 共識六方法投票</td><td>k=2 與 k=3 並列第一，取最小 k=2</td></tr>
+  <tr><td>階層分群最佳 linkage</td><td>ward k=2（balance gate 過 24.2%）</td></tr>
+  <tr><td><strong>最終演算法</strong></td><td><strong>kmeans k=2，silhouette 0.115，Jaccard 0.918</strong></td></tr>
+  <tr><td>Cluster 解讀</td><td>cluster 0 = 近期 run_diff↑（球隊熱）；cluster 1 = 近期 run_diff↓（球隊冷）</td></tr>
+  </table>
+
+  <footer>
+  本報告由 <code>Scripts/build/build_report_html.py</code> 自動生成；資料來源 <a href=\"https://github.com/rebas-tw/rebas.tw-open-data\">rebas.tw open data</a>，授權 ODC-By。
+  </footer>
+</section>"""
+
     return f"""<!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang=\"zh-Hant\">
 <head>
-<meta charset="utf-8">
+<meta charset=\"utf-8\">
 <title>CPBL 2023-2024 非監督特徵發現 — 結果報告</title>
 <style>{CSS}</style>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>
+<script src=\"https://cdn.plot.ly/plotly-2.27.0.min.js\"></script>
 <script>
-document.addEventListener("DOMContentLoaded", () => {{
-    mermaid.initialize({{ startOnLoad: true, theme: "default", flowchart: {{ useMaxWidth: true }} }});
+document.addEventListener(\"DOMContentLoaded\", () => {{
+    mermaid.initialize({{ startOnLoad: true, theme: \"default\", flowchart: {{ useMaxWidth: true }} }});
 }});
 </script>
 </head>
 <body>
-
-<h1>CPBL 2023-2024 非監督式特徵發現 — 結果報告</h1>
-<p class="subtitle">114-2 資料科學期末專題 · pre-game leak-free feature discovery · 主 notebook：
-<code>Scripts/cpbl_unsupervised_feature_discovery.ipynb</code></p>
-
-<div class="toc">
-<strong>目次</strong>
-<ol>{toc_items}</ol>
-<p style="margin-top: 0.8rem; font-size: 0.9rem; color: #666;">
-本報告每個 cell 採三段式呈現：<br>
-&nbsp;&nbsp;<span style="background:#f9a825;color:white;padding:1px 8px;border-radius:10px;font-size:0.78rem;">如何解讀</span>（在輸出之前的讀法指引）<br>
-&nbsp;&nbsp;→ 渲染後的圖表 / 表格 / plotly<br>
-&nbsp;&nbsp;<span style="background:#1976d2;color:white;padding:1px 8px;border-radius:10px;font-size:0.78rem;">本次結果與意義</span>（基於實際 CSV 數據的觀察與解讀）
-</p>
-</div>
-
-<h2 id="overview">Pipeline 流程圖</h2>
-<div class="mermaid-wrap">
-<pre class="mermaid">
-{MERMAID}
-</pre>
-</div>
-
-<h2 id="executive-summary">Executive Summary（一頁摘要）</h2>
-<div class="stage-summary">
-<p>本研究從 rebas.tw 官方 release 取得 CPBL 2023 + 2024 共 ~660 場原始比賽，建構 1320 列 team-game features。對學長 supervised pipeline 的最大改進：</p>
-<ol>
-<li><strong>Pre-game gate</strong>：建立 60+ 個 <code>prior_*</code> / <code>opp_prior_*</code> 滾動 lag features，讓 unsupervised 階段只看比賽前可知資訊，<code>cluster_id</code> 可作為 leak-free 預測因子。</li>
-<li><strong>K 值六方法共識投票</strong>：避免「只看 silhouette」單一指標誤判。本次 k=2 與 k=3 並列第一，採最小 k=2。</li>
-<li><strong>階層分群最佳化</strong>：4 種 linkage + balance gate 過濾「外點隔離」退化解；average linkage cophenetic 最高 (0.647) 卻被 gate 過濾（1315 vs 5 split），最終 hierarchy 採 ward k=2。</li>
-<li><strong>Wang 對照驗證</strong>：32/44 數值欄位的 Pearson r ≥ 0.999，確認 Python port 在數值上完全等價於 Wang 的 R 實作。</li>
-</ol>
-<p><strong>最終 cluster 結構</strong>：KMeans k=2，silhouette 0.115（偏低）、bootstrap-Jaccard 0.918（很高）——「連續譜被切兩半」型態。cluster_id 的意義是「最近 5-10 場的 run_diff 是正還是負」（自我 + 對手雙軸）。</p>
-<p><strong>新增候選 features (8 個)</strong>給下游 supervised 模型：<code>cluster_id</code>、<code>gmm_p0-p3</code>、<code>pc1-pc3</code>。</p>
-</div>
-
+<div class=\"app\">
+{sidebar}
+<main class=\"content\">
+{home_tab}
 {body_stages}
-
-<footer>
-<p>本報告由 <code>Scripts/build/build_report_html.py</code> 自動生成；資料來源 <a href="https://github.com/rebas-tw/rebas.tw-open-data">rebas.tw open data</a>，授權 ODC-By。</p>
-</footer>
-
+</main>
+</div>
+{SIDEBAR_JS}
 </body>
 </html>
 """
