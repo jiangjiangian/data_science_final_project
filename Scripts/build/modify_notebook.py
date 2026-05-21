@@ -414,8 +414,8 @@ meaningful = meaningful.merge(z_table, left_on="feature", right_index=True, how=
 meaningful["combined_rank"] = (
     meaningful["anova_F"].rank(ascending=False, method="min")
     + meaningful["mi"].rank(ascending=False, method="min")
-).rank(method="dense")
-meaningful["combined_rank"] = meaningful["combined_rank"].round().astype(int)
+).rank(method="dense", na_option="bottom")
+meaningful["combined_rank"] = meaningful["combined_rank"].fillna(-1).round().astype(int)
 meaningful = meaningful.sort_values("combined_rank").reset_index(drop=True)
 show_and_track(meaningful.round(3), "stage5_meaningful_features.csv", "table")
 
