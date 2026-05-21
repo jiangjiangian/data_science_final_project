@@ -16,6 +16,7 @@ SUBFOLDERS = {
     "02_pca": [
         "stage5_pca_scree.png",
         "stage5_pca_biplot.png",
+        "stage5_pca_biplot_interactive.html",
         "stage5_pca_loadings_abs.csv",
         "stage5_loadings_heatmap.png",
         "stage5_pca_3d.html",

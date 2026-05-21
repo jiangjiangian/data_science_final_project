@@ -177,10 +177,24 @@ def build_success_criteria_html():
     return f'<div class="table-wrap">{df.to_html(index=False, escape=True, classes="full-table")}</div>'
 
 
+def _png_inline(rel_path):
+    p = RESULTS / rel_path
+    if not p.exists():
+        return f'<p><em>(missing {rel_path})</em></p>'
+    import base64 as _b64
+    data = _b64.b64encode(p.read_bytes()).decode("ascii")
+    return f'<img src="data:image/png;base64,{data}" alt="{rel_path}" style="max-width:100%;height:auto;display:block;margin:0.5rem auto;">'
+
+
 SECTION_OVERRIDES = {
     "0.3": lambda: build_success_criteria_html(),
     "3.2": lambda: render_csv_full("stage3/stage3_per_season_focus.csv"),
-    "5.5": lambda: render_csv_full("stage5/02_pca/stage5_pca_loadings_abs.csv"),
+    "5.5": lambda: (
+        "<h4 class='sub-heading'>Loadings 熱圖（features × PC1..24）</h4>"
+        + _png_inline("stage5/02_pca/stage5_loadings_heatmap.png")
+        + "<h4 class='sub-heading'>Loadings 數值表（|loading|）</h4>"
+        + render_csv_full("stage5/02_pca/stage5_pca_loadings_abs.csv")
+    ),
     "5.15": lambda: (
         "<h4 class='sub-heading'>Cluster means（按 cluster 0 vs cluster 1 差距大小排序）</h4>"
         + render_csv_transposed_cluster("stage5/09_interpretation/stage5_cluster_means.csv")
@@ -420,8 +434,11 @@ SECTION_EXPL = {
 "<p><strong>本次結果</strong>：PC1 PVE ≈ 18.7%、PC2 ≈ 13.7%、PC3 ≈ 7.8%，之後緩慢遞減；<strong>需要 24 個 PC 才達 90% 累積 PVE</strong>（cum = 0.911）；scree 沒有明顯 elbow，曲線平滑下降。<br>"
 "<strong>意義</strong>：需要 24 個 PC 達 90%，遠多於後場視角（~13 個）——pre-game lag features 之間的線性相關較鬆，因為不同視窗（5/10）、不同對象（self/opponent）算出來的同名 feature 雖然相關但不完全。K-Means 後續在這 24 維跑，避免少數軸主導。</p>"),
 
-"5.4": ("PCA biplot",
-"<p><strong>讀法指引</strong>：PC1-PC2 散點 + 所有 features 的 loading 箭頭。每個點 = 一場 team-game（按 scored_first 上色 coolwarm）；每條箭頭 = 一個 feature 在這 2D 平面上的方向與長度（loading）。<br><br><strong>讀法</strong>：同向 = synergistic；反向 = 對立；長度 = 該 feature 在這平面上的解釋力。</p>",
+"5.4": ("PCA biplot（含互動式版本）",
+"<p><strong>讀法指引</strong>：PC1-PC2 散點 + 所有 features 的 loading 箭頭。每個點 = 一場 team-game（按 scored_first 上色 coolwarm）；每條箭頭 = 一個 feature 在這 2D 平面上的方向與長度（loading）。<br><br><strong>讀法</strong>：同向 = synergistic；反向 = 對立；長度 = 該 feature 在這平面上的解釋力。</p>"
+"<p>本格輸出兩個版本：<br>"
+"&nbsp;&nbsp;• <strong>靜態 PNG</strong> — 所有箭頭與標籤都常駐顯示，適合放在報告 / 簡報。<br>"
+"&nbsp;&nbsp;• <strong>互動 plotly HTML</strong> — 標籤<strong>只在鼠標 hover 到該箭頭頂端時才顯示</strong>，解決靜態圖箭頭擠在一起的問題；可放大縮小、平移觀察。</p>",
 "<p><strong>本次結果</strong>：點雲為橢圓形分布。<code>scored_first</code> 上色 (紅藍) 在空間沒有明顯分離——「誰先得分」隨機性高，無法由 pre-game 狀態預測。箭頭明顯分成<strong>兩束</strong>：往右方向是自我近期 features（<code>prior_run_diff_mean_5/10</code>、<code>prior_runs_scored_mean_*</code> 等）；往上方向是對手近期 features（<code>opp_prior_runs_scored_mean_*</code>、<code>opp_prior_H_mean_*</code> 等）。<br>"
 "<strong>意義</strong>：兩束接近正交（自我 vs 對手是兩個獨立軸）——這正是 PC1 與 PC2 分別捕捉到的結構。先得分顏色洗在一起說明這個事件不是 pre-game 狀態決定的，是場上隨機。</p>"),
 
