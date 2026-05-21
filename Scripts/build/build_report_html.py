@@ -811,30 +811,45 @@ def render_sidebar():
 SIDEBAR_JS = """
 <script>
 function activateTab(tabId, scrollTo) {
+    // Show only the target tab page
     document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
     const target = document.getElementById(tabId);
     if (target) target.classList.add('active');
+
+    // Clear ALL active markers in sidebar
     document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.sidebar details').forEach(d => d.classList.remove('has-active'));
+    document.querySelectorAll('.sidebar .pin-top').forEach(p => p.classList.remove('active'));
+
+    // Mark the directly-clicked link as active
+    const targetHash = scrollTo ? scrollTo : tabId;
+    const lk = document.querySelector('.sidebar a[href="#' + targetHash + '"]');
+    if (lk) {
+        lk.classList.add('active');
+        // If the active link is inside a <details>, mark that details has-active so the
+        // summary line lights up too (so user sees BOTH "I'm on this sub-section" AND
+        // "I'm on this stage")
+        const det = lk.closest('details');
+        if (det) {
+            det.classList.add('has-active');
+            det.open = true;  // auto-expand so user can see siblings
+        }
+        // If on the pin-top home link, light it up
+        const pin = lk.closest('.pin-top');
+        if (pin) pin.classList.add('active');
+        // Scroll sidebar to keep the active item visible
+        lk.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    }
+
     if (scrollTo) {
-        const lk = document.querySelector('.sidebar a[href="#' + scrollTo + '"]');
-        if (lk) lk.classList.add('active');
         requestAnimationFrame(() => {
             const el = document.getElementById(scrollTo);
             if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
         });
     } else {
-        const lk = document.querySelector('.sidebar a[href="#' + tabId + '"]');
-        if (lk) lk.classList.add('active');
-        document.querySelector('main.content').scrollTo(0, 0);
+        const mainEl = document.querySelector('main.content');
+        if (mainEl) mainEl.scrollTo(0, 0);
         window.scrollTo(0, 0);
-    }
-    // Ensure parent details is open if clicking a sub-section
-    if (scrollTo) {
-        const lk = document.querySelector('.sidebar a[href="#' + scrollTo + '"]');
-        if (lk) {
-            const det = lk.closest('details');
-            if (det) det.open = true;
-        }
     }
 }
 
@@ -1003,6 +1018,8 @@ body {
     font-size: 0.85rem;
     line-height: 1.4;
     border-left: 2px solid transparent;
+    transition: background 0.12s, color 0.12s, padding 0.12s;
+    position: relative;
 }
 .sidebar ul.subsections a:hover {
     background: #eaf2fc;
@@ -1010,11 +1027,42 @@ body {
     border-left-color: #1a73e8;
 }
 .sidebar ul.subsections a.active {
-    background: #fff3cd;
-    color: #1a3a5e;
-    font-weight: 600;
-    border-left-color: #f9a825;
+    background: linear-gradient(90deg, #fff3cd 0%, #ffe082 100%);
+    color: #5a3aa0;
+    font-weight: 700;
+    border-left: 3px solid #f9a825;
+    padding-left: 1.85rem;
+    box-shadow: inset 0 0 0 1px #fbc02d;
 }
+.sidebar ul.subsections a.active::before {
+    content: "▶";
+    position: absolute;
+    left: 0.55rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #f9a825;
+    font-size: 0.65rem;
+}
+/* Top-level stage summary — active state */
+.sidebar details.has-active > summary,
+.sidebar details > summary:has(a.active) {
+    background: linear-gradient(90deg, #e3f2fd 0%, #bbdefb 100%);
+    color: #0d47a1 !important;
+    box-shadow: inset 4px 0 0 #1976d2;
+}
+.sidebar details.has-active > summary::before {
+    color: #1976d2;
+}
+.sidebar details > summary > a.active {
+    /* directly-clicked stage (vs sub-section inside) — make it visually stronger */
+    color: #0d47a1;
+}
+/* Pin-top home link — active state */
+.sidebar .pin-top.active {
+    background: linear-gradient(90deg, #e1bee7 0%, #ce93d8 100%);
+    box-shadow: 0 2px 6px rgba(123,31,162,0.18);
+}
+.sidebar .pin-top.active a { color: #1a0033; }
 .sidebar .pin-top {
     margin: 0 0.5rem 1rem 0.5rem;
     padding: 0.5rem 0.7rem;
