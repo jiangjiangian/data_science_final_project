@@ -7,8 +7,19 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 
-# Derived / regenerable artefacts (rebuilt by the notebook)
+# Derived / regenerable artefacts (rebuilt by master.sh / the notebook)
+Derived/
 data/processed/
+
+# Results sub-directories that are populated only when DOWNLOAD_ALL=True
+Results/figures/
+Results/tables/
+Results/cpbl_artifacts/
+Results/cpbl_artifacts.zip
 
 # graphify side-effects (`graphify install` / `graphify extract`)
 **/graphify-out/
+
+# rebas zips downloaded into Data/2024/ by Stage 1 at runtime
+Data/2024/*.zip
+Data/2024/CPBL-*/
