@@ -11,11 +11,10 @@ __pycache__/
 Derived/
 data/processed/
 
-# Results sub-directories that are populated only when DOWNLOAD_ALL=True
-Results/figures/
-Results/tables/
+# Results scratch outputs (Results/stage*/ ARE committed; these are intermediate)
 Results/cpbl_artifacts/
 Results/cpbl_artifacts.zip
+outputs/
 
 # graphify side-effects (`graphify install` / `graphify extract`)
 **/graphify-out/
