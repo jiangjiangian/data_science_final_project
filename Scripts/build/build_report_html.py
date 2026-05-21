@@ -280,7 +280,7 @@ SECTION_EXPL = {
 
 # Stage 3
 "3.1": ("整體 describe",
-"<p><strong>讀法指引</strong>：標準的 <code>.describe()</code>——對所有 29 個 numeric features 印 count / mean / std / min / 25% / 50% / 75% / max。讀法：mean vs median 距離大代表 skew；std/mean 高代表雜訊大；count &lt; 1320 代表有缺失。</p>",
+"<p><strong>讀法指引</strong>：標準的 <code>.describe()</code>——對所有 29 個 numeric features 印 count / mean / std / min / 25% / 50% / 75% / max。<br><br><strong>讀法</strong>：mean vs median 距離大代表 skew；std/mean 高代表雜訊大；count &lt; 1320 代表有缺失。</p>",
 "<p><strong>本次結果</strong>：<code>runs_scored</code> mean=4.187 std=3.141 max=22（右偏 Gamma-like）；<code>run_diff</code> mean=0 std=4.456（必然對稱：每場一隊正一隊負）；<code>scored_first</code> mean=0.442；<code>led_after_3</code> mean=0.373。<br>"
 "<strong>意義</strong>：所有 count = 1320 表示無缺失；右偏分布是 baseball 得分常態，後面 PCA 用 RobustScaler 是合理選擇。</p>"),
 
@@ -298,7 +298,7 @@ SECTION_EXPL = {
 "唯一些微的「2024 三振多了一點 + 後段得分多一點」是本資料能看到的 meta 變化線索——可能與球員池輪替或投手控球策略有關，但變化幅度都在 5-10% 區間，不算戲劇性。</p>"),
 
 "3.3": ("二元 features 基準率",
-"<p><strong>讀法指引</strong>：印出 4 個 binary features（win、scored_first、led_after_3、led_after_6）的整體與分季 prevalence。讀法：win 應該 ≈ 0.5（每場一勝一敗）；明顯偏離代表有和局或結構問題。</p>",
+"<p><strong>讀法指引</strong>：印出 4 個 binary features（win、scored_first、led_after_3、led_after_6）的整體與分季 prevalence。<br><br><strong>讀法</strong>：win 應該 ≈ 0.5（每場一勝一敗）；明顯偏離代表有和局或結構問題。</p>",
 "<p><strong>本次結果</strong>：<br>"
 "&nbsp;&nbsp;• <code>win</code>：整體 <strong>0.490</strong>（2023=0.482, 2024=0.497）<br>"
 "&nbsp;&nbsp;• <code>scored_first</code>：整體 <strong>0.442</strong>（2023=0.435, 2024=0.449）<br>"
@@ -344,7 +344,7 @@ SECTION_EXPL = {
 
 # Stage 4 — EDA
 "4.1": ("Small-multiples histogram + KDE",
-"<p><strong>讀法指引</strong>：2×5 grid，10 個 FOCUS_FEATURES 各一張 histogram + KDE。每張按 season_tag 上色（2023 vs 2024 兩條 KDE 疊加）。讀法：<br>"
+"<p><strong>讀法指引</strong>：2×5 grid，10 個 FOCUS_FEATURES 各一張 histogram + KDE。每張按 season_tag 上色（2023 vs 2024 兩條 KDE 疊加）。<br><br><strong>讀法</strong>：<br>"
 "&nbsp;&nbsp;• 雙峰 → 存在子群（如先發 vs 救援投手）<br>"
 "&nbsp;&nbsp;• 長尾右偏 → RobustScaler 對<br>"
 "&nbsp;&nbsp;• 兩條 KDE 高度重疊 → 跨季 meta 穩定</p>",
@@ -352,7 +352,7 @@ SECTION_EXPL = {
 "<strong>意義</strong>：聯盟層級分布跨季穩定，2023+2024 合併分析合理。長尾欄位確認需要 RobustScaler 處理。</p>"),
 
 "4.2": ("Spearman 相關係數熱圖",
-"<p><strong>讀法指引</strong>：29×29 features 的 Spearman 相關熱圖，上三角 mask 起來避免重複，配色 diverging（紅=正相關、藍=負相關、白=無）。讀法：<br>"
+"<p><strong>讀法指引</strong>：29×29 features 的 Spearman 相關熱圖，上三角 mask 起來避免重複，配色 diverging（紅=正相關、藍=負相關、白=無）。<br><br><strong>讀法</strong>：<br>"
 "&nbsp;&nbsp;• 深紅塊（|ρ| ≥ 0.9）= 高度冗餘，Stage 5.1 的 filter prune 會丟掉一個<br>"
 "&nbsp;&nbsp;• 深藍塊 = 強負相關（典型攻防對立 features）<br>"
 "&nbsp;&nbsp;• PCA 第一主成分通常會抓到這條深藍對立軸</p>",
@@ -360,43 +360,43 @@ SECTION_EXPL = {
 "<strong>意義</strong>：冗餘集中在兩個 block 內——5.1 filter prune 會選 block 內代表性欄位、丟其他。「攻擊 block」與「投手 block」之間相關性弱，是兩個獨立軸——PCA PC1 應與其中一個 block 對齊。</p>"),
 
 "4.3": ("Top-5 features pairplot",
-"<p><strong>讀法指引</strong>：把與 win 相關性最高的前 5 個 features（本次為 run_diff / led_after_6 / runs_scored / runs_allowed / run_per_hit）做 pairplot，每個散點按 win 上色，對角線為 KDE。讀法：對角線兩個 KDE（win=0/1）越分開 → 該單一 feature 預測力越強；2D 角落若有清楚分群 → 該對 feature 是強組合 predictor。</p>"
+"<p><strong>讀法指引</strong>：把與 win 相關性最高的前 5 個 features（本次為 run_diff / led_after_6 / runs_scored / runs_allowed / run_per_hit）做 pairplot，每個散點按 win 上色，對角線為 KDE。<br><br><strong>讀法</strong>：對角線兩個 KDE（win=0/1）越分開 → 該單一 feature 預測力越強；2D 角落若有清楚分群 → 該對 feature 是強組合 predictor。</p>"
 "<p><em>提醒</em>：這裡用的是 post-game 變數，分離乾淨是必然——本格的價值是直覺校準，不能拿來證明事前 predictor 有效。</p>",
 "<p><strong>本次結果</strong>：對角線 <code>run_diff</code> 的 win=0/1 KDE 完全分離（win=1 重在右側 +）；<code>runs_scored / runs_allowed</code> 對 win 的 KDE 各有 separation（win=1 偏高 runs_scored、偏低 runs_allowed）；<code>led_after_6</code> 是 binary 所以呈兩條柱。<code>run_diff × runs_scored</code> 散點呈現兩條斜線（勝負分明）。<br>"
 "<strong>意義</strong>：post-game 視角下，run_diff 是接近完美的 predictor——本來就是 win 的直接前置定義（run_diff &gt; 0 ⇔ win = 1，除了和局）。這張圖最大價值是「再次強調為何需要 pre-game gate」——這些 features 都是事後才知道。</p>"),
 
 "4.4": ("主客場 mean 對照（grouped bar）",
-"<p><strong>讀法指引</strong>：把 FOCUS_FEATURES 的 mean 分成「主場列」與「客場列」做 grouped bar；2023 / 2024 兩面板。讀法：主場 bar &gt; 客場 bar 代表該指標有主場效應；兩面板若都呈同方向則跨季穩定。</p>",
+"<p><strong>讀法指引</strong>：把 FOCUS_FEATURES 的 mean 分成「主場列」與「客場列」做 grouped bar；2023 / 2024 兩面板。<br><br><strong>讀法</strong>：主場 bar &gt; 客場 bar 代表該指標有主場效應；兩面板若都呈同方向則跨季穩定。</p>",
 "<p><strong>本次結果</strong>：絕大多數 features 的主客差距都 &lt; 0.2（很小）；唯一較明顯：<code>runs_scored</code> 主場略高、<code>runs_allowed</code> 主場略低，差距約 0.1-0.3 分。兩季 pattern 一致，<strong>沒有看到 2024 主場優勢大幅擴張</strong>。<br>"
 "<strong>意義</strong>：學長 2024 報告觀察「主場勝率 +5.6pp」但平均分差 ≈ 0——本圖印證後者（mean 差距很小但勝率仍有差）。主場優勢更多是「微小累積轉化為勝率」而非「攻防各項都明顯更好」。</p>"),
 
 "4.5": ("每月特徵趨勢線",
-"<p><strong>讀法指引</strong>：把每月 FOCUS_FEATURES mean 畫折線，2023 / 2024 overlay。讀法：跨月震盪是季節性（如夏季高溫影響投手）；兩條線的整年偏移是 meta shift 信號；季末（10 月+）小樣本造成的鋸齒在跨季比較時需排除。</p>",
+"<p><strong>讀法指引</strong>：把每月 FOCUS_FEATURES mean 畫折線，2023 / 2024 overlay。<br><br><strong>讀法</strong>：跨月震盪是季節性（如夏季高溫影響投手）；兩條線的整年偏移是 meta shift 信號；季末（10 月+）小樣本造成的鋸齒在跨季比較時需排除。</p>",
 "<p><strong>本次結果</strong>：10 條 trajectory 整年都在 ±10% 範圍輕微振盪，無強趨勢。<code>whip_like / strikeout_walk_ratio</code> 在 7-8 月略升（夏季高溫造成投手控球變差是常見現象）。10 月後曲線變平緩或鋸齒——只剩季後賽小樣本。<br>"
 "<strong>意義</strong>：再次確認 2023 / 2024 meta 接近；季中夏熱對投手的影響可觀察到但幅度不大。</p>"),
 
 "4.6": ("ECDF panels",
-"<p><strong>讀法指引</strong>：每個 feature 的 ECDF（empirical CDF），按 season 上色。讀法：ECDF 比 histogram 更能呈現百分位與長尾——線越陡密度越大。兩條線平行偏移 = 純 location shift（mean 變）；交叉 = scale 或 shape 變。</p>",
+"<p><strong>讀法指引</strong>：每個 feature 的 ECDF（empirical CDF），按 season 上色。<br><br><strong>讀法</strong>：ECDF 比 histogram 更能呈現百分位與長尾——線越陡密度越大。兩條線平行偏移 = 純 location shift（mean 變）；交叉 = scale 或 shape 變。</p>",
 "<p><strong>本次結果</strong>：兩條 ECDF 幾乎完全貼合在一起，僅在百分位 90-99 區段（極端值）有微小分離——<code>strikeout_walk_ratio</code> 與 <code>whip_like</code> 的 99-th 在 2024 略往右移（偶有更極端的 SO/BB 場次）。<br>"
 "<strong>意義</strong>：跨季穩定性的最強證據——不只是 mean 一致，整個分布 shape 都一致。也意味著「2023 + 2024 合併分析」不會被 meta shift 污染。</p>"),
 
 "4.7": ("球場 × 週次熱圖",
-"<p><strong>讀法指引</strong>：把每個球場（y 軸）每 ISO 週（x 軸）的主辦場次數量畫熱圖，2023 / 2024 各一層。讀法：空白週 = All-Star break、postseason 切換、天氣取消；熱點 = 主場連戰（4-6 場連續）。</p>",
+"<p><strong>讀法指引</strong>：把每個球場（y 軸）每 ISO 週（x 軸）的主辦場次數量畫熱圖，2023 / 2024 各一層。<br><br><strong>讀法</strong>：空白週 = All-Star break、postseason 切換、天氣取消；熱點 = 主場連戰（4-6 場連續）。</p>",
 "<p><strong>本次結果</strong>：主要 6 個球場（樂天桃園、洲際、新莊、天母、屏東、嘉義）熱點分布密集均勻；中間 1-2 週是冷色（All-Star break）；10 月後只剩 1-2 球場有熱度（postseason 集中）。兩季 layout 高度相似。<br>"
 "<strong>意義</strong>：CPBL 賽程結構跨季穩定；主場連戰的「3-6 場 streak」可解釋部分 home advantage 的累積效應。</p>"),
 
 "4.8": ("球隊勝率排序 bar chart",
-"<p><strong>讀法指引</strong>：每隊的勝率（overall / away / home 三條 bar），按 overall 由高到低排序。讀法：home &gt; away 代表主場優勢明顯型；差距小代表主客均衡型。0.5 紅虛線是隨機基準。</p>",
+"<p><strong>讀法指引</strong>：每隊的勝率（overall / away / home 三條 bar），按 overall 由高到低排序。<br><br><strong>讀法</strong>：home &gt; away 代表主場優勢明顯型；差距小代表主客均衡型。0.5 紅虛線是隨機基準。</p>",
 "<p><strong>本次結果</strong>：排名前段（如統一獅、樂天桃猿）overall ≈ 0.55；後段（如富邦悍將）≈ 0.45；幾乎所有球隊都有 home &gt; away（聯盟普遍主場效應），最大主客差距約 +0.10，最小接近 0。<br>"
 "<strong>意義</strong>：主場優勢是聯盟普遍現象但程度不一，部分球隊明顯（可能是球場特性或主場觀眾結構），部分球隊接近平均。</p>"),
 
 "4.9": ("H vs run_diff hexbin",
-"<p><strong>讀法指引</strong>：H（球隊每場安打數）為 x 軸、run_diff 為 y 軸的 hexbin 密度圖，2023 / 2024 並列。讀法：右上熱點 = 「打很多 → 大勝」（攻擊主導）；左上 = 「打不多 → 仍贏」（投手戰小勝、靠對手失誤）；左下 = 「打不多 → 輸」（被壓制）。</p>",
+"<p><strong>讀法指引</strong>：H（球隊每場安打數）為 x 軸、run_diff 為 y 軸的 hexbin 密度圖，2023 / 2024 並列。<br><br><strong>讀法</strong>：右上熱點 = 「打很多 → 大勝」（攻擊主導）；左上 = 「打不多 → 仍贏」（投手戰小勝、靠對手失誤）；左下 = 「打不多 → 輸」（被壓制）。</p>",
 "<p><strong>本次結果</strong>：主集中區為 H ∈ [6, 11] × run_diff ∈ [-5, +5]，呈大致正線性趨勢。少數高 H（15+）幾乎都對應大 run_diff（+10 以上）；少數低 H（&lt; 5）有些仍勝（投手戰）但更多大敗。兩季 pattern 高度一致。<br>"
 "<strong>意義</strong>：「多打 → 多贏」是 baseball 直覺，但低 H 也能贏的場次數量提醒：得分能力不是唯一決定因素，投手與情境同樣重要。</p>"),
 
 "4.10": ("Top-3 features 球隊分布 violin",
-"<p><strong>讀法指引</strong>：對 |Spearman ρ| vs win 前 3 高的 features（本次 = run_diff、led_after_6、runs_scored）做球隊分組 violin。讀法：violin 寬而矮 = 該隊內部風格多樣（可能跨多 cluster）；窄而高 = 風格穩定。中位數位置告訴該隊在這指標的特色。</p>",
+"<p><strong>讀法指引</strong>：對 |Spearman ρ| vs win 前 3 高的 features（本次 = run_diff、led_after_6、runs_scored）做球隊分組 violin。<br><br><strong>讀法</strong>：violin 寬而矮 = 該隊內部風格多樣（可能跨多 cluster）；窄而高 = 風格穩定。中位數位置告訴該隊在這指標的特色。</p>",
 "<p><strong>本次結果</strong>：排名靠前球隊（統一獅、樂天桃猿）的 <code>run_diff</code> violin 中位數偏正、整體較寬；排名靠後球隊（富邦悍將）中位數偏負。<code>led_after_6</code> 是 binary 退化為兩條柱。<code>runs_scored</code> 各隊形狀相近——「得分能力」差距小但「最終分差」差距大。<br>"
 "<strong>意義</strong>：球隊間「得分能力」差距小，但「轉化為勝負分差」差很多——投手與運氣的角色。後續 Stage 5 cluster 抓到的應該是「短期狀態（run_diff 滾動）」而非「球隊整體實力」。</p>"),
 
@@ -421,12 +421,12 @@ SECTION_EXPL = {
 "<strong>意義</strong>：需要 24 個 PC 達 90%，遠多於後場視角（~13 個）——pre-game lag features 之間的線性相關較鬆，因為不同視窗（5/10）、不同對象（self/opponent）算出來的同名 feature 雖然相關但不完全。K-Means 後續在這 24 維跑，避免少數軸主導。</p>"),
 
 "5.4": ("PCA biplot",
-"<p><strong>讀法指引</strong>：PC1-PC2 散點 + 所有 features 的 loading 箭頭。每個點 = 一場 team-game（按 scored_first 上色 coolwarm）；每條箭頭 = 一個 feature 在這 2D 平面上的方向與長度（loading）。讀法：同向 = synergistic；反向 = 對立；長度 = 該 feature 在這平面上的解釋力。</p>",
+"<p><strong>讀法指引</strong>：PC1-PC2 散點 + 所有 features 的 loading 箭頭。每個點 = 一場 team-game（按 scored_first 上色 coolwarm）；每條箭頭 = 一個 feature 在這 2D 平面上的方向與長度（loading）。<br><br><strong>讀法</strong>：同向 = synergistic；反向 = 對立；長度 = 該 feature 在這平面上的解釋力。</p>",
 "<p><strong>本次結果</strong>：點雲為橢圓形分布。<code>scored_first</code> 上色 (紅藍) 在空間沒有明顯分離——「誰先得分」隨機性高，無法由 pre-game 狀態預測。箭頭明顯分成<strong>兩束</strong>：往右方向是自我近期 features（<code>prior_run_diff_mean_5/10</code>、<code>prior_runs_scored_mean_*</code> 等）；往上方向是對手近期 features（<code>opp_prior_runs_scored_mean_*</code>、<code>opp_prior_H_mean_*</code> 等）。<br>"
 "<strong>意義</strong>：兩束接近正交（自我 vs 對手是兩個獨立軸）——這正是 PC1 與 PC2 分別捕捉到的結構。先得分顏色洗在一起說明這個事件不是 pre-game 狀態決定的，是場上隨機。</p>"),
 
 "5.5": ("Loadings 表與熱圖",
-"<p><strong>讀法指引</strong>：|loadings| 矩陣（features 為列、PC 為欄）。每個 PC 取 |loading| 最高的前幾個 features 就能說出該 PC 的「主題」。讀法：loading 0.7+ 為主導，0.3-0.7 為次要，&lt; 0.3 在該 PC 上影響小。</p>",
+"<p><strong>讀法指引</strong>：|loadings| 矩陣（features 為列、PC 為欄）。每個 PC 取 |loading| 最高的前幾個 features 就能說出該 PC 的「主題」。<br><br><strong>讀法</strong>：loading 0.7+ 為主導，0.3-0.7 為次要，&lt; 0.3 在該 PC 上影響小。</p>",
 "<p><strong>本次結果（每個 PC 的 top 5）</strong>：<br>"
 "<strong>PC1（18.7% PVE）— 我方近期 run_diff / 得分強度</strong><br>"
 "&nbsp;&nbsp;1. <code>prior_run_diff_mean_10</code>：<strong>0.750</strong><br>"
@@ -449,7 +449,7 @@ SECTION_EXPL = {
 "<strong>意義</strong>：前 3 個 PC 的故事非常清楚——<strong>PC1 = 我方近期狀態（run_diff/runs_scored）</strong>、<strong>PC2 = 對手近期狀態</strong>、<strong>PC3 = 我方近期被得分能力 + WHIP</strong>。PC1 + PC2 共解釋 32%，PC1-2-3 共 40%；後面 cluster 的軸線自然落在 PC1-PC2 平面，分區規則就是「我方熱不熱 + 對手熱不熱」。</p>"),
 
 "5.6": ("3D PCA 互動圖",
-"<p><strong>讀法指引</strong>：plotly 3D scatter，軸 = PC1 / PC2 / PC3，顏色 = season_tag，hover 顯示 team + date。可在報告中直接旋轉觀察。讀法：若 2023 / 2024 兩團色塊分離 → 跨季 meta 不同；若交織 → 跨季穩定。</p>",
+"<p><strong>讀法指引</strong>：plotly 3D scatter，軸 = PC1 / PC2 / PC3，顏色 = season_tag，hover 顯示 team + date。可在報告中直接旋轉觀察。<br><br><strong>讀法</strong>：若 2023 / 2024 兩團色塊分離 → 跨季 meta 不同；若交織 → 跨季穩定。</p>",
 "<p><strong>本次結果</strong>：2023（藍）與 2024（紅）高度交織、佔據相同 3D 空間——沒有任何視覺上的跨季分離。沿 PC1 方向觀察可看到輕度的兩團密集區（後續 K-Means 切的兩個 cluster 在這方向上分）；沿 PC3 方向無明顯結構（雜訊多）。<br>"
 "<strong>意義</strong>：「2024 模型可以用 2023 訓練」的視覺證據——pre-game lag features 形成的 manifold 跨季穩定。</p>"),
 
@@ -503,7 +503,7 @@ SECTION_EXPL = {
 "<strong>意義</strong>：GMM 認為「4 個 Gaussian 組件」最能描述 pre-game 狀態分布——比 K-Means 的 k=2 多兩個，因為 GMM 能容納 partial overlap（soft assignment）。下游可同時用 cluster_id（硬，k=2）與 gmm_p0..gmm_p3（soft 4 維），兩種粒度兼得。</p>"),
 
 "5.10": ("HDBSCAN 密度分群",
-"<p><strong>讀法指引</strong>：HDBSCAN 不需先指定 k，自動找出密集區域並把不夠密的點標 noise（label=-1）。Condensed tree 視覺化每個 cluster 的「穩定度」——樹幹粗 = 穩定。讀法：noise 比例高 = 資料密度不均；cluster 數很多 = 抓到細粒度結構。</p>",
+"<p><strong>讀法指引</strong>：HDBSCAN 不需先指定 k，自動找出密集區域並把不夠密的點標 noise（label=-1）。Condensed tree 視覺化每個 cluster 的「穩定度」——樹幹粗 = 穩定。<br><br><strong>讀法</strong>：noise 比例高 = 資料密度不均；cluster 數很多 = 抓到細粒度結構。</p>",
 "<p><strong>本次結果</strong>：HDBSCAN 找到少數較大 cluster + 相當比例 noise（具體數字依 min_cluster_size = max(30, n/40) ≈ 33 的設定）。<br>"
 "<strong>意義</strong>：pre-game lag 空間是 manifold-like 而非有清楚密集區——HDBSCAN 不是這份資料的最佳選擇。最終 cluster 選 K-Means 而非 HDBSCAN 是合理的。</p>"),
 
@@ -537,12 +537,12 @@ SECTION_EXPL = {
 "<strong>意義</strong>：這張圖視覺化了「silhouette 低 + 邊界鬆」的本質——pre-game 狀態真的是連續譜，不存在「兩個清楚 archetype」。但這不否定 cluster_id 的價值——5.18a 會看到 cluster 中心仍然有強烈差異（ANOVA F &gt; 500）。</p>"),
 
 "5.13": ("UMAP 二維投影",
-"<p><strong>讀法指引</strong>：UMAP 把 24 維 PCA 空間壓到 2 維。兩面板：左 = 按 cluster_id 上色、右 = 按 season 上色。設定 n_neighbors=30、min_dist=0.1（中等粒度）。讀法：cluster 若在 UMAP 上各圍成清楚 blob → 結構真實；若交織 → K-Means 切的只是 PC 平面的人工切割。</p>",
+"<p><strong>讀法指引</strong>：UMAP 把 24 維 PCA 空間壓到 2 維。兩面板：左 = 按 cluster_id 上色、右 = 按 season 上色。設定 n_neighbors=30、min_dist=0.1（中等粒度）。<br><br><strong>讀法</strong>：cluster 若在 UMAP 上各圍成清楚 blob → 結構真實；若交織 → K-Means 切的只是 PC 平面的人工切割。</p>",
 "<p><strong>本次結果</strong>：左圖呈現連續橢圓帶，cluster 0 與 cluster 1 在帶的兩端但中間大量 overlap（典型「連續譜被切兩半」型態）；右圖 2023 / 2024 完全交織。<br>"
 "<strong>意義</strong>：與 silhouette 低、PC1-PC2 平面所見一致——cluster_id 反映的是「位置在連續軸上的哪一端」，而非「離散 archetype」。對下游 supervised 來說 cluster_id 仍有訊息（區分兩端），但 gmm_p 或 pc1 連續分數保留更多細節。跨季 manifold 一致再次驗證。</p>"),
 
 "5.14": ("t-SNE perplexity sanity check",
-"<p><strong>讀法指引</strong>：t-SNE 在兩個 perplexity（15 / 50）並列。讀法：兩個設定看到類似結構 → topology 穩定可信；小 perplexity 出現 micro-cluster 而大 perplexity 全融合 → 只有 fine structure 無 macro 結構。</p>",
+"<p><strong>讀法指引</strong>：t-SNE 在兩個 perplexity（15 / 50）並列。<br><br><strong>讀法</strong>：兩個設定看到類似結構 → topology 穩定可信；小 perplexity 出現 micro-cluster 而大 perplexity 全融合 → 只有 fine structure 無 macro 結構。</p>",
 "<p><strong>本次結果</strong>：perplexity=15 時點雲較分散有許多小密集區；perplexity=50 時融合為較大連續塊。兩個設定都顯示 cluster 0 / 1 大致在不同區域但邊界模糊——與 UMAP 結論一致。<br>"
 "<strong>意義</strong>：跨方法（UMAP + t-SNE）+ 跨 perplexity（15 + 50）三重 sanity check 都指向同一結構：「連續譜 + 模糊邊界」。</p>"),
 
@@ -560,12 +560,12 @@ SECTION_EXPL = {
 "<strong>意義</strong>：這張表是 cluster 命名的數值根據。<strong>cluster 0 = 我方近 5 場熱 + 對手近 5 場冷；cluster 1 = 我方近期冷 + 對手近期熱</strong>。post-game 變數差異很小（runs 差 0.05）卻在 win 上產生 +5pp 差距——pre-game form 對勝負有可量化但小幅度的影響。</p>"),
 
 "5.16": ("Cluster radar chart",
-"<p><strong>讀法指引</strong>：每個 cluster 中心在 FOCUS_FEATURES 上的 z-score 多邊形 radar。讀法：某 spoke 凸出 = 該 cluster 在那 feature 高於整體；凹陷 = 低於。多邊形形狀就是 cluster 的「指紋」。</p>",
+"<p><strong>讀法指引</strong>：每個 cluster 中心在 FOCUS_FEATURES 上的 z-score 多邊形 radar。<br><br><strong>讀法</strong>：某 spoke 凸出 = 該 cluster 在那 feature 高於整體；凹陷 = 低於。多邊形形狀就是 cluster 的「指紋」。</p>",
 "<p><strong>本次結果</strong>：兩個多邊形幾乎完全鏡像對稱——cluster 0 在所有 spokes 偏向「正常或略高」（z ≈ +0.05）、cluster 1 偏向「正常或略低」（z ≈ -0.05），兩者差距在 z 軸上僅約 ±0.1。形狀沒有「某 feature 突出某 feature 凹陷」的 distinct fingerprint。<br>"
 "<strong>意義</strong>：FOCUS_FEATURES 是 post-game 變數，本身在兩個 cluster 上差異很小（因 cluster 是用 pre-game 切的，與 5.15 的數值一致）。這張 radar 不是 cluster 的真實 fingerprint——若想看真實指紋應該看 pre-game lag features 的 z-score radar（其數值在 5.18a 的 z_cluster_0/1 欄位可看到，gap 達 ±0.5）。</p>"),
 
 "5.17": ("Cluster boxplots（notched + bootstrap CI）",
-"<p><strong>讀法指引</strong>：10 個 FOCUS_FEATURES 的 2×5 boxplot grid。Notch 是中位數的 ≈95% bootstrap CI——兩個 cluster 的 notch 不重疊 = 中位數差異的視覺證據。本次最小群 641（&gt; 10），notch + bootstrap=2000 啟用。讀法：notch 重疊大代表該 feature 對此 cluster 區分力低；中位數重疊但箱體高度差大則代表「形狀不同但中心一致」。</p>",
+"<p><strong>讀法指引</strong>：10 個 FOCUS_FEATURES 的 2×5 boxplot grid。Notch 是中位數的 ≈95% bootstrap CI——兩個 cluster 的 notch 不重疊 = 中位數差異的視覺證據。本次最小群 641（&gt; 10），notch + bootstrap=2000 啟用。<br><br><strong>讀法</strong>：notch 重疊大代表該 feature 對此 cluster 區分力低；中位數重疊但箱體高度差大則代表「形狀不同但中心一致」。</p>",
 "<p><strong>本次結果</strong>：10 張 boxplot 兩個 cluster 的 boxes 高度與中位數線幾乎完全重疊；notch 也大幅重疊。所有 FOCUS_FEATURES 對 cluster_id 都沒有顯著區分力（中位數差距小於 notch 範圍）。<br>"
 "<strong>意義</strong>：再次確認 cluster_id 是按 <strong>pre-game</strong> 切的——post-game 變數本就不該明顯區分 cluster，否則 cluster_id 就有 leakage 嫌疑。要看 cluster 真實 fingerprint，請看 5.18a 的 ANOVA F bar chart（top features 全是 prior_run_diff / runs_scored / win_rate 等 pre-game lag）。</p>"),
 
@@ -598,7 +598,7 @@ SECTION_EXPL = {
 "<strong>意義</strong>：F=500-600 對應極強分離（cluster 間 mean 差距是 std 的 6-7 倍）。<strong>所有 top features 的 z_cluster_0 與 z_cluster_1 都是反向符號</strong>——完美對稱結構：cluster 0 = 自我熱 + 對手冷；cluster 1 = 自我冷 + 對手熱。Bar chart 視覺化 top-12 ANOVA F，幅度斷崖式下降（top 10 都 &gt; 300，11-12 已降到 &lt; 50）——確認「自我 vs 對手近期 form」是唯一的明確分群軸。</p>"),
 
 "5.19": ("2023 vs 2024 cluster frequency shift",
-"<p><strong>讀法指引</strong>：(season_tag × cluster) cross-tab + grouped bar + plotly Sankey 流向圖。讀法：bar 中某 cluster 在 2024 比例升高 = 跨季 meta 偏移；Sankey 流線粗 = 該 (season, cluster) 組合的場次多。</p>",
+"<p><strong>讀法指引</strong>：(season_tag × cluster) cross-tab + grouped bar + plotly Sankey 流向圖。<br><br><strong>讀法</strong>：bar 中某 cluster 在 2024 比例升高 = 跨季 meta 偏移；Sankey 流線粗 = 該 (season, cluster) 組合的場次多。</p>",
 "<p><strong>本次結果</strong>：<br>"
 "<table style='border-collapse:collapse;'>"
 "<tr><th>season</th><th>cluster 0</th><th>cluster 1</th><th>合計</th><th>cluster 1 比例</th></tr>"
@@ -614,7 +614,7 @@ SECTION_EXPL = {
 
 # Stage 6
 "6.1": ("Focus / lag features × unsupervised 結構 overlap",
-"<p><strong>讀法指引</strong>：對 active features（pre-game gate ON 時 = lag features）算 (pc1_loading, pc2_loading, max_shap_per_cluster) 三者合成 combined_score。讀法：combined_score 高 = PCA 與 SHAP 都認可的「自信特徵」；低 = 在 cluster 結構中沒有發揮作用。</p>",
+"<p><strong>讀法指引</strong>：對 active features（pre-game gate ON 時 = lag features）算 (pc1_loading, pc2_loading, max_shap_per_cluster) 三者合成 combined_score。<br><br><strong>讀法</strong>：combined_score 高 = PCA 與 SHAP 都認可的「自信特徵」；低 = 在 cluster 結構中沒有發揮作用。</p>",
 "<p><strong>本次結果（top 5）</strong>：<br>"
 "&nbsp;&nbsp;1. <code>opp_prior_run_diff_mean_10</code>：PC1=0.623, PC2=0.572, SHAP=0.055 → combined 1.250<br>"
 "&nbsp;&nbsp;2. <code>prior_run_diff_mean_10</code>：0.750, 0.432, 0.057 → 1.239<br>"
@@ -624,7 +624,7 @@ SECTION_EXPL = {
 "<strong>意義</strong>：top 5 清一色是<strong>「自我 vs 對手近期 run_diff / runs_scored 滾動平均」</strong>——再次確認 cluster 結構由「雙邊近期 form」雙軸驅動。Wang 學長 supervised top-10 都是 post-game features（在 gate=ON 下不在 active 集合裡），所以本表的「prior_*」與 Wang 的 features 是不同視角下的互補組合，不直接重疊。</p>"),
 
 "6.2": ("Unsupervised 新增候選 features",
-"<p><strong>讀法指引</strong>：列出本研究 unsupervised 階段新增的 candidate features，每個附 kind / description / interpretation。讀法：這些就是「下游 supervised 該試的新 features」。</p>",
+"<p><strong>讀法指引</strong>：列出本研究 unsupervised 階段新增的 candidate features，每個附 kind / description / interpretation。<br><br><strong>讀法</strong>：這些就是「下游 supervised 該試的新 features」。</p>",
 "<p><strong>本次結果（8 個新候選 features）</strong>：<br>"
 "&nbsp;&nbsp;1. <code>cluster_id</code>（categorical）— 「球隊近期 run_diff 正 / 負」二分<br>"
 "&nbsp;&nbsp;2. <code>gmm_p0..p3</code>（soft probability）— GMM 4 維 soft membership<br>"
@@ -634,7 +634,7 @@ SECTION_EXPL = {
 "<strong>意義</strong>：這 8 個是學長原始 feature set 沒有的（pre-game lag 衍生），下游若加上後 AUC 顯著提升，就證明 unsupervised 階段為學長 baseline 加值。若沒提升，代表 cluster 結構與 win 的關係已被 Wang 的 post-game features 充分表達——也是有意義的負結論。</p>"),
 
 "6.3": ("Research design + feature strategy summary",
-"<p><strong>讀法指引</strong>：兩張「一頁摘要」表——研究設計（面向 × 設計 × 解讀）+ feature strategy（保留 / 增添 / 可行候選 features 三類）。讀法：是給組員 / 老師看的 one-pager，不用展開細節。</p>",
+"<p><strong>讀法指引</strong>：兩張「一頁摘要」表——研究設計（面向 × 設計 × 解讀）+ feature strategy（保留 / 增添 / 可行候選 features 三類）。<br><br><strong>讀法</strong>：是給組員 / 老師看的 one-pager，不用展開細節。</p>",
 "<p><strong>本次結果</strong>：研究設計 4 個面向（資料來源 / 分析單位 / 主要方法 / 最後輸出）；feature strategy 列出 retain（10 focus features）/ 可保留的 originals / 可行 derived features。<br>"
 "<strong>意義</strong>：這頁可直接放進報告 / 簡報。Limitations 一欄會列誠實警告：silhouette 偏低、只用單季資料、未做 supervised 驗證——避免結論被過度推銷。</p>"),
 
