@@ -1033,75 +1033,82 @@ workflow_recap = md("""
 ### 我們做了什麼（end-to-end）
 
 1. **資料取得**：從 rebas.tw 官方 release 直接下載 2023 上下半季 + 2024 整季 zip（無需依賴任何本機已清理檔案）。
-2. **前處理**：JSON 攤平 → 1 場 → 2 列 team-game row → 加入逐局節奏、進攻、防守、語意化標籤 → 與 Wang 學長 `team_game_features.csv` 對照驗證 R port。
+2. **前處理**：JSON 攤平 → 1 場 → 2 列 team-game row → 加入逐局節奏、進攻、防守、語意化標籤 → 與 Wang 學長 `team_game_features.csv` 對照驗證 R port（32/44 數值欄位 Pearson r ≥ 0.999）。
 3. **Pre-game 特徵工程**：建立 60+ 個 `prior_* / opp_prior_* / season_to_date_* / h2h_* / stadium_prior_*` 滾動 lag features，嚴格只看過去；以 `USE_PREGAME_ONLY` gate 控制 Stage 5 輸入。
 4. **描述統計 + EDA**：5 個描述統計表 + 10 張視覺化（histogram/KDE、Spearman heatmap、pairplot、home/away bars、monthly trend、ECDF、calendar heatmap、win-rate bars、hexbin、per-team violin）。
-5. **非監督學習**：filter prune → RobustScaler/StandardScaler 分組標準化 → PCA scree/biplot/loadings/3D → 六方法 K 共識（elbow/silhouette/CH/DBI/gap/BIC）→ K-Means、Ward、GMM、HDBSCAN 並行 → validity panel + bootstrap-Jaccard → per-point silhouette → UMAP/t-SNE → cluster mean/SD + radar + notched boxplots + surrogate Tree-SHAP + ANOVA F/MI → 2023 vs 2024 cluster shift + Sankey → derived feature register。
-6. **綜合整理**：Wang/focus features vs unsupervised 結構的 overlap 表 + 新增 candidate features 清單 + research design summary。
-7. **最終輸出**：`final_features.csv`（original + semantic + numeric + unsupervised）+ feature catalog + research design summary + 選擇性 ARTIFACTS zip。
+5. **非監督學習**：filter prune → RobustScaler/StandardScaler 分組標準化 → PCA scree/biplot/loadings/3D → 六方法 K 共識（elbow/silhouette/CH/DBI/gap/BIC）→ **階層分群 4-linkage + balance gate 最佳化**（average linkage cophenetic 最高 0.647 但 1315 vs 5 退化，最終 hierarchy 採 ward k=2）→ K-Means、GMM、HDBSCAN 並行 → validity panel + bootstrap-Jaccard → 最終 KMeans k=2（sil 0.115, Jaccard 0.918）→ per-point silhouette → UMAP/t-SNE → cluster mean/SD + radar + notched boxplots + surrogate Tree-SHAP + ANOVA F/MI → 2023 vs 2024 cluster shift + Sankey → derived feature register。
+6. **綜合整理**：Wang/focus features vs unsupervised 結構的 overlap 表 + 新增 8 個 candidate features 清單（cluster_id + 4 gmm_p + 3 pc）+ research design summary。
+7. **最終輸出**：`final_features.csv`（original + semantic + numeric + unsupervised）+ feature catalog + research design summary + 51 個 stage artifacts。
 
-### 建議檔案組織（最終下載 bundle 的目錄樹）
+### 完整目錄樹（與當前 repo 實際結構對齊）
 
 ```
-cpbl_feature_discovery/
-├── README.md                                       (入口；說明 master 重建指令)
-├── master.sh                                       (一鍵：jupyter nbconvert --execute → 重建 Derived + Results)
-├── Data/                                           (原始下載資料；.gitignore；包含於 zip 以便重現)
-│   ├── README.md                                       來源 URL / 授權 / schema 文件
-│   ├── 2023/
-│   │   ├── CPBL-2023-G1-G150-OpenData.zip              rebas v0.1.0-2023.0
-│   │   └── CPBL-2023-G151-G300-OpenData.zip            rebas v0.1.0-2023.1
-│   ├── 2024/
-│   │   └── CPBL-2024-OpenData.zip                      rebas v0.1.0-2024
-│   └── reference/
-│       └── wang_team_game_features.csv                 analyze_wang 對照快照
-├── Scripts/                                        (程式碼；版本控制)
-│   ├── cpbl_unsupervised_feature_discovery.ipynb       本 notebook（含執行後的 inline 輸出）
-│   └── build_notebook.py                               builder（從原始 source 重建 .ipynb）
-├── Derived/                                        (中間 artefacts；.gitignore；由 master.sh 重建)
-│   ├── team_game.csv                                   清洗後 team-game rows
-│   ├── team_game_pregame_lags.csv                      加上 pre-game lag features
-│   ├── X_scaled.csv                                    標準化後特徵矩陣
-│   ├── X_pca.csv                                       PCA scores
-│   ├── wang_merge_2024.csv                             與 Wang 對照
-│   └── k_consensus_table.csv                           K 共識投票
-├── Results/                                        (最終產出；版本控制)
-│   ├── figures/
-│   │   ├── stage3_*.png                                描述統計
-│   │   ├── stage4_*.png                                EDA
-│   │   ├── stage5_*.png                                非監督
-│   │   └── stage5_*.html                               plotly 3D / Sankey
-│   ├── tables/
-│   │   ├── describe_overall.csv
-│   │   ├── per_season_focus.csv
-│   │   ├── corr_vs_win.csv  /  corr_vs_run_diff.csv
-│   │   ├── k_consensus_votes.csv
-│   │   ├── validity_panel.csv
-│   │   ├── meaningful_features.csv                     ANOVA F + MI 排名
-│   │   ├── wang_merge_comparison.csv
-│   │   └── feature_catalog.csv
-│   ├── final_features.csv                              主交付：original + derived
-│   ├── research_design_summary.md                      一頁研究設計摘要
-│   └── notebook_executed.html                          HTML export
+.
+├── README.md                                                  入口；專案總覽 + 主要結論
+├── master.sh                                                  一鍵 rebuild（執行 notebook + 重生 HTML）
+├── .gitignore
+│
+├── Data/                                                      原始與外部資料
+│   ├── README.md                                                  rebas.tw release URL / 授權 / 結構說明
+│   ├── 2023/                                                      內附；~76 MB JSON，4 個 release 子資料夾
+│   │   ├── CPBL-2023-G1-G150-OpenData/
+│   │   ├── CPBL-2023-G151-G300-OpenData/
+│   │   ├── CPBL-2023-Challenge-OpenData/
+│   │   └── CPBL-2023-TaiwanSeries-OpenData/
+│   ├── 2024/                                                      佔位夾；notebook Stage 1 第一次跑會自動下載 zip
+│   │   └── README.md
+│   └── reference/                                                 對照組（analyze_wang cleaned CSV 等）
+│       └── README.md
+│
+├── Scripts/                                                   程式碼（版本控制）
+│   ├── cpbl_unsupervised_feature_discovery.ipynb                  本 notebook（193 cells，含 inline outputs）
+│   ├── build/                                                     產生 / 重建 notebook 的腳本鏈
+│   │   ├── README.md
+│   │   ├── modify_notebook.py                                         注入 3 改動 + 5.8/5.11/5.15/5.17 patches
+│   │   ├── inject_explanations.py                                     在 executed notebook 上注入「結果解讀」
+│   │   ├── build_report_html.py                                       生成 Results/notebook_executed.html（含三段式 + sidebar tabs）
+│   │   └── reorganize_stage5.py                                       把 flat stage5 artifacts 搬進 10 個子資料夾
+│   └── legacy/                                                    前期工作（pre-game win prediction）
+│       ├── cpbl_pregame_winprob.ipynb
+│       └── figures/{clustering,eda_overview,evaluation,pca,shap}.png
+│
+├── Derived/                                                   中間 artefacts；gitignored；由 master.sh 重建
+│
+├── Results/                                                   最終產出（53 檔，~21 MB）
+│   ├── README.md                                                  Results 結構說明
+│   ├── notebook_executed.html                                     程式碼無關 HTML 報告（11 MB，HackMD 風格 sidebar tabs）
+│   ├── stage2/                                                    Wang 對照（2 CSV）
+│   ├── stage3/                                                    描述統計（6 CSV）
+│   ├── stage4/                                                    EDA 視覺化（10 PNG）
+│   ├── stage5/                                                    非監督特徵發現（33 檔，分 10 子資料夾）
+│   │   ├── 01_filter_scale/                                           5.1-5.2 篩選與標準化（2 檔）
+│   │   ├── 02_pca/                                                    5.3-5.6 主成分分析（5 檔）
+│   │   ├── 03_k_consensus/                                            5.7 K 值六方法共識（5 檔）
+│   │   ├── 04_hierarchy/                                              5.8 階層分群最佳化：4 linkage + balance gate（5 檔）
+│   │   ├── 05_gmm/                                                    5.9 GMM（1 檔）
+│   │   ├── 06_hdbscan/                                                5.10 HDBSCAN（1 檔）
+│   │   ├── 07_validity/                                               5.11-5.12 演算法比較 + silhouette diag（2 檔）
+│   │   ├── 08_embeddings/                                             5.13-5.14 UMAP / t-SNE（2 檔）
+│   │   ├── 09_interpretation/                                         5.15-5.18a 群解讀（7 檔）
+│   │   └── 10_cross_season/                                           5.19 跨季比較（3 檔）
+│   └── stage6/                                                    綜合整理（4 CSV）
+│
 └── docs/
-    ├── plan.md                                         本研究計畫書
-    ├── feature_dictionary.md                           feature 名稱 + 定義 + pre/post-game tag
-    └── knowledge_base/                                 course_material 整理出的 10 份 KB markdown
-        ├── topic03_measurement_1.md
-        ├── ...
-        └── topic08_unsupervised.md
+    ├── plan.md                                                    研究計畫書
+    └── knowledge_base/                                            從 course-material 蒸餾的 10 份 KB markdown + README
 ```
 
 ### 版本控制 / `.gitignore` 慣例
 
-- **進 git**：`Scripts/ Results/ docs/ README.md master.sh`
-- **不進 git**：`Data/ Derived/`（檔案大、可由 `master.sh` 重新產出）
-- **單一交付**：`Results/final_features.csv` —— 下游 supervised 模型直接吃這份。
+- **進 git**：`README.md` / `master.sh` / `.gitignore` / `Scripts/` / `Results/` / `docs/` / `Data/2023/`
+- **不進 git**：`Derived/` 與 `Data/2024/CPBL-*`（master.sh 重新產出）
+- **單一交付**：`Results/stage6/stage6_*.csv` 與 `Results/stage5/09_interpretation/stage5_meaningful_features.csv` —— 下游 supervised 模型直接吃這些。
 
 ### 下一步建議
 
-- 把 `DOWNLOAD_ALL = True` 跑一次得到完整 zip。
-- 開一個 supervised baseline notebook，比對「Wang 原始 10 個 features」vs「Wang + 本 notebook 新增的 cluster_id / pc / gmm_p」的 AUC，量化本研究實際提升多少。
+- 跑 `python3 Scripts/build/reorganize_stage5.py` 把 flat 輸出按主題搬進 10 個 sub-folders。
+- 跑 `python3 Scripts/build/build_report_html.py` 重生 `Results/notebook_executed.html`（HackMD 風格 sidebar tabs 報告）。
+- 開一個 supervised baseline notebook，比對「Wang 原始 features」vs「Wang + 本 notebook 新增的 cluster_id / pc / gmm_p」的 AUC，量化本研究實際提升多少。
 - 若想看 post-game 視角的 game-archetype，把 `USE_PREGAME_ONLY = False`、從 Stage 5 起重跑。
 """)
 new_cells.append(workflow_recap)
