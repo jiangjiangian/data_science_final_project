@@ -1,19 +1,36 @@
-# TL;DR — CPBL 主客場勝率預測期末專案
+# TL;DR — CPBL 非監督式特徵發現（2023 + 2024）
 
-> 一份兩到三分鐘可讀完的專案總覽。所有數字取自已定案、版本控管的產出物（`Results/eval/_final_metrics.json`、`reports/03_step1_to_step3.md`、執行後報告 `Results/v1_final_report.html`），非撰稿時重算。
+> 兩到三分鐘可讀完的專案總覽。所有數字取自版本控管的產出物
+> （`README.md` 主要結論表、`Results/stage{2..6}/`、已執行的
+> `Scripts/cpbl_unsupervised_feature_discovery.ipynb`），非撰稿時重算。
+> 想直接看完整渲染報告，開 [`Results/notebook_executed.html`](Results/notebook_executed.html)。
 
 ---
 
 ## 1. 專案簡介（目標）
 
-本專案是政大資料科學（114-2）期末作業，主題為中華職棒（CPBL）主客場勝負預測。核心問題單純而明確：**僅憑一場「尚未開打」的例行賽賽前可得資訊，能否預測主隊是否獲勝？** 目標變數為二元分類 `is_home_win ∈ {0, 1}`，分析單位是「一場比賽」，平手場次（極少數）剔除。
+114-2 政大資料科學期末專題。從 [rebas.tw](https://github.com/rebas-tw/rebas.tw-open-data)
+官方 release 取得 CPBL 中華職棒 **2023 + 2024** 兩季資料，建構 team-game-level
+特徵，並**只用非監督式學習**（filter / PCA / 分群 / 降維）找出可作為
+**leak-free 預測因子**的衍生特徵——`cluster_id`、PC scores、GMM soft
+probabilities——再回頭與學長的監督式 top-10 名單交叉驗證。
 
-- **資料**：兩季公開資料（2023–2024，共 678 場）。比賽來自野球革命（rebas）open data，天氣改用 Open-Meteo（ERA5 重分析）。嚴守課程限制：禁用 Kaggle 與任何預打包資料集。
-- **方法骨幹**：m1–m7 漸進消融，量化「球場、天氣、球隊戰力、打者狀態、投手」五組特徵各自的邊際貢獻；搭配時間感知切分、walk-forward 樣本外（OOF）預測、bootstrap 信賴區間與校準分析。
-- **預先登記門檻**（避免事後挑指標）：(a) 必勝 — Test AUC 顯著優於 m1 截距；(b) 可發表 — Test AUC ≥ 0.60；(c) 可部署 — Test AUC ≥ 0.62 且校準良好。
-- **真正的貢獻不是高 AUC 數字**，而是一套能正確揭露「此問題在現有資料下接近不可預測」的嚴謹方法論，以及對既有論文目標洩漏（target leakage）的可視化證明。
-
-> 註：charter 原規劃以 R／tidymodels 為主，因 Colab 執行過慢且教師後續允許 Python，全流程改以 Python 單一自含 notebook 實作，R 程式碼降級為交叉驗證的參考鏡像。
+- **問題定位**：這不是「預測勝負」的監督式專案（那條線是前期工作，已降級到
+  `Scripts/legacy/cpbl_pregame_winprob.ipynb`）。本 notebook 的研究問題是
+  **「在不看結果的前提下，team-game 特徵空間裡有沒有可被無監督地發現、
+  且能餵給下游模型的結構？」**
+- **對照基準**：學長 **王學長** 在 `cde52470/data_science@analyze_wang` 上只分析
+  2024 季，用規則式語意標籤 + 監督式模型（logistic / RF / XGBoost + SHAP），
+  其跨模型共識 top-10 為 `run_per_hit, innings_pitched, H, scored_first,
+  whip_like, hr_allowed, hits_allowed, AB, middle_runs, late_runs`。本研究把
+  他的 R 特徵工程移植成 Python 並逐欄對帳，再用非監督結構去佐證 / 擴充這份名單。
+- **防洩漏紀律**：Stage 2 另建 60+ 個 `prior_* / opp_prior_* /
+  season_to_date_* / h2h_* / stadium_prior_*` **滾動 lag features**（只看過去），
+  並以 `USE_PREGAME_ONLY` gate 控制 Stage 5 只吃 pre-game 欄位——確保發現的
+  `cluster_id` 本身就是 leak-free 因子。
+- **方法來源**：所有手法都對應 `docs/knowledge_base/` 那 10 份從課程
+  `course-material/` 蒸餾出來的 KB（PCA-SVD、featureReduction、unsupervised、
+  visualization、measurement、SHAP/LIME…），lecture 沒講到的才用業界慣例補。
 
 ---
 
@@ -21,78 +38,113 @@
 
 ```mermaid
 flowchart TD
-    S1["Stage 1: 定義目標 — 業務問題 + 預先登記門檻"]
-    S2["Stage 2: 獲取資料 — rebas + Open-Meteo, N=678"]
-    S3["Stage 3: 探索資料 — Park Factor / PCA / K-means"]
-    S4["Stage 4: 建立模型 — m1 到 m7 消融 + 演算法比較"]
-    S5["Stage 5: 評估模型 — season-OOF / 校準 / 對帳門檻"]
-    S5b["Stage 5.5: 延伸驗證 v2 — 洩漏證明 + pitch-level 推翻"]
-    S6["Stage 6: 結論 — 乾淨的負面結果"]
-    S7["Stage 7: 部署 — R Shiny 方法論展示"]
-    S8["Stage 8: 可重現性 — 單一自含 notebook"]
+    S0["Stage 0：環境與輸出設定<br/>imports · RANDOM_STATE=42 · artifact registry · 成功標準"]
+    S1["Stage 1：取得真實資料<br/>rebas.tw release zip（2023 上下半季 + 2024）"]
+    S2["Stage 2：前處理 + team-game 特徵工程<br/>1320×51 → +61 lag → 1320×112 · Wang 對照 · pre-game gate"]
+    S3["Stage 3：描述統計 + 關聯檢查<br/>describe · base rates · Pearson vs Spearman · skew/kurtosis"]
+    S4["Stage 4：EDA 視覺化（10 張）"]
+    S5["Stage 5：非監督式特徵發現（5.1–5.20）"]
+    S6["Stage 6：綜合整理 + 建模建議<br/>overlap · 8 個新候選特徵 · research design"]
+    S7["Stage 7：最終 CSV 輸出<br/>final_features.csv（original + derived）"]
 
-    S1 --> S2 --> S3 --> S4 --> S5
-    S5 --> S5b
-    S5b --> S6
-    S6 --> S7
-    S6 --> S8
+    S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+
+    subgraph U ["Stage 5 內部管線"]
+        direction TB
+        U1["5.1–5.2 filter prune + 分組標準化"]
+        U2["5.3–5.6 PCA（scree / biplot / loadings / 3D）"]
+        U3["5.7 K 值六方法共識投票 → k=2"]
+        U4["5.8 階層分群 4-linkage + balance gate"]
+        U5["5.9–5.12 GMM · HDBSCAN · validity + bootstrap-Jaccard · silhouette"]
+        U6["5.13–5.14 UMAP / t-SNE sanity"]
+        U7["5.15–5.18a cluster 解讀：mean/SD · radar · boxplot · SHAP · ANOVA F/MI"]
+        U8["5.19–5.20 跨季 shift + Sankey · derived feature register"]
+        U1 --> U2 --> U3 --> U4 --> U5 --> U6 --> U7 --> U8
+    end
+
+    S5 -.-> U
 ```
 
 ---
 
 ## 3. 各 Stage 說明
 
-### Stage 1 — 定義目標 Define the Goal
-- **子目標**：把「預測 CPBL 主隊勝負」這個模糊意圖，轉成可證偽、可量測的二元分類問題，並事前鎖定成功門檻。
-- **方法**：定義 `is_home_win` 與分析單位（一場比賽）；在 charter 中預先登記三個門檻 (a)/(b)/(c) 與兩個假設（HS 球場、HW 天氣）。以最嚴苛的「運彩分析師」利害關係人為準，要求模型同時具備排序能力（AUC）與機率校準。
-- **結論**：產出可作為下游唯一真實來源的 charter（`Results/01_define_the_goal.md`）；第 5 階段會逐條對帳這些門檻。
+### Stage 0 — 環境與輸出設定
+- **子目標**：鎖定可重現環境，並建立「先 inline、可選打包」的輸出機制。
+- **方法**：import pandas / numpy / sklearn / hdbscan / umap-learn / plotly / shap / kneed，固定 `RANDOM_STATE = 42`、中文字型；定義 `DOWNLOAD_ALL=False`、`ARTIFACTS=[]` 與 `show_and_track()`，所有圖表自動進 registry；渲染 success-criteria 表作為後續 quality gate。
+- **結論**：套件全數 import 成功、runtime 版本記錄完成；registry 與輸出開關就緒，預設不寫任何 side-file。
 
-### Stage 2 — 獲取資料 Acquire Data
-- **子目標**：從公開、免金鑰來源取得位元級可重現的原始資料，原始資料視為「寫一次、永不竄改」的 WORM 儲存。
-- **方法**：rebas open data（含逐場逐球員打擊／投球成績）＋ Open-Meteo（CWA CODiS 遭 CAPTCHA 阻擋後改用）。每個來源檔記 SHA256；天氣缺漏率 >50% 即硬失敗。採嚴格時間感知切分：train 406 場、valid 97 場、holdout 47 場。
-- **結論**：修正一個寫死的 `CPBL-` 檔名 glob bug（中文檔名的 2023 賽季被靜默吃掉），樣本數由 366 增至 **678**。教訓「靜默資料遺漏比程式崩潰更危險」直接催生第 8 階段的驗證機制。極小的 47 場 holdout 也埋下後續假訊號的根源。
+### Stage 1 — 取得真實資料
+- **子目標**：100% 從官方 release 取得位元級可重現的原始資料，不依賴任何本機已清理檔。
+- **方法**：下載 rebas.tw 三個 release zip（2023 上半季 / 2023 下半季 / 2024），快取後以 `pd.json_normalize` 解析 OpenData JSON，記錄 ODC-By 授權與 source URL。
+- **結論**：三個 zip 下載成功、`raw_2023 + raw_2024` 合計約 660 場比賽；資料來源可重現性最大化。
 
-### Stage 3 — 探索資料 Explore the Data
-- **子目標**：在最便宜的階段殺掉壞假設、挖出資料品質地雷。
-- **方法**：時間感知（leave-one-out）Park Factor；驗證 rebas pitcherBox schema（每場每邊恰好一筆 `order==1`，1356 個 game-side 零例外）；非監督探索做天氣 PCA 與比賽輪廓 K-means（k=4）；v2 另交付 leak-free 特徵的分布／相關矩陣／PCA 三張圖。
-- **結論**：球場效應明確（澄清湖 ≈1.18 打者友善、天母 ≈0.86 投手友善）。但 PCA 中主隊勝／負兩群完全重疊、K-means 各群勝率持平基準線——**結構存在於「打法」中，卻不存在於「勝負」中**，從非監督角度獨立印證了負面結論。
+### Stage 2 — 前處理與 team-game-level 特徵工程
+- **子目標**：把巢狀 JSON 轉成乾淨的 team-game 特徵矩陣，移植並驗證學長的特徵工程，再建立嚴格 leak-free 的 pre-game 特徵。
+- **方法**：合併球季去重 → 1 場拆成 2 列 team-game row → 逐局節奏 / 進攻效率 / 投手防守 / 語意化標籤；2.7a 與學長 `team_game_features.csv` 做 left-merge 逐欄對帳；2.7b 建滾動 lag features；2.9 以 `USE_PREGAME_ONLY` gate 切換 pre/post-game 視角。
+- **結論**：`team_game` 由 1320×51 加 lag 後成 **1320×112**（+61 個 `prior_*` 系列）；Wang R port **35/44 數值欄 Pearson r ≥ 0.999**（數值上等價）；`pre_game_ready` **1308/1320（99.1%）**，每隊賽季前 1–4 場因缺 prior window 被標記、後續由 imputer 補中位數；pre-game gate 啟用 → Stage 5 的 `cluster_id` 為 leak-free 因子。
 
-### Stage 4 — 建立模型 Build the Model
-- **子目標**：先固定演算法、變動特徵組以量化各組邊際貢獻；再固定特徵、變動演算法以選引擎。
-- **方法**：全部 leak-free 特徵工程（Elo K=4／主場 +24、Pythagenpat 30 場、休息天數、Park Factor、打者滾動 OPS/HR/K%/BB%、投手近 5 場＋全隊 30 場成績）。m1（純主場優勢截距）→ m7（五組全特徵），固定 logistic regression 做消融；演算法比較涵蓋 logit／glmnet／RandomForest／XGBoost／LightGBM，皆以 `TimeSeriesSplit(5)` GridSearchCV 調參。
-- **結論**：charter 舊 m6（球場＋天氣）實測 season-OOF ≈0.467（與雜訊無異）而退役，槽位改鎖定為「投手」——rebas 中唯一尚未開採、最可能帶訊號的槓桿。選模一律以 CV-AUC 而非 47 場 holdout 決定（holdout 95% CI 寬達 ±0.18，據此選模等同擲銅板）。
+### Stage 3 — 描述統計與關聯檢查
+- **子目標**：用 prevalence、關聯性、分布形狀三個維度定位「最該關注哪幾個特徵」。
+- **方法**：整體 + 分季 / 分隊 / 主客 `describe`；二元特徵基準率；對 `win` / `run_diff` 同時算 Pearson r 與 Spearman ρ；skew / kurtosis / missing-rate 診斷表。
+- **結論**：確認多數 baseball ratio 為 **monotonic-non-linear**（Spearman > Pearson）→ 印證 Stage 5 對重尾欄位用 RobustScaler 是正確選擇；skew/kurtosis 也確認了 HEAVY_TAIL / SYMMETRIC 的分組標準化策略。
 
-### Stage 5 — 評估模型 Evaluate the Model
-- **子目標**：判定各特徵組的訊號真偽——AUC 給排序、校準給信任、信賴區間給不確定性。
-- **方法**：五次完整執行（Run A–E）逐步排除限制；對 m1–m7 各組做 leak-free walk-forward season-OOF（455 場）作為穩健主指標；單一 isotonic 校準（僅在降低 Brier 時採用）；雙閾值報告。
-- **結論**：**乾淨的負面結果**。各組 season-OOF AUC 全落在 0.50 附近 ±0.05 帶內（m2 球場 0.512、m3 天氣 0.524、m4 球隊 0.500、m5 打者 0.500、m6 投手 0.463、m7 全部 0.495）。最具啟發性的是投手：47 場 holdout 上看似亮眼的 **AUC 0.689，在 leak-free walk-forward 上跌至 0.463**（圖 4 核心），是繼 Run A（RF holdout 0.656）之後第二次被同一套方法論自動戳破的小樣本假訊號。生產模型為調參後 RandomForest（CV-AUC 0.546、holdout 0.640、CI [0.451, 0.806]、season-OOF 0.528），且因 isotonic 校準反而惡化 Brier 而誠實服務 raw 機率。**三個成功門檻全部未達、兩個假設皆不獲支持**——而這正證明預先登記嚴謹檢定的必要。
+### Stage 4 — EDA 視覺化（10 張）
+- **子目標**：用視覺化交叉檢查資料品質、季間差異與冗餘結構。
+- **方法**：histogram+KDE small multiples、Spearman heatmap、top-5 pairplot、主客平均 grouped bar、每月趨勢、ECDF、球場×週次 calendar heatmap、球隊勝率 bar、H–run_diff hexbin、per-team violin。
+- **結論**：十張圖全產出；2023 / 2024 meta 接近、主場優勢仍在、學長 features 在多圖上保留信號；並提示 redundancy 主要集中在 **offense 三組（H/AB/run_per_hit）** 與 **pitching 三組（whip/hits_allowed/bb_allowed）**——直接為 Stage 5.1 的剪枝鋪路。
 
-### Stage 5.5 — 延伸驗證 v2（洩漏證明 + pitch-level 推翻嘗試）
-- **子目標**：檢驗同聯盟同資料的論文（Lo et al., 2025，報告 AUC 0.97–0.98）是否真有訊號，並用尚未開採的逐球（pitch-by-pitch）資料做最後一搏的推翻嘗試。
-- **方法**：以 leak-free 方式重現論文特徵菜單；逐球特徵推翻規則於執行前預先登記（saber＋pitch 須優於 saber-only 且配對 95% bootstrap CI 不相交，N=380 配對列）。
-- **結論**：**洩漏可視化證明**（圖 8，最不含糊的貢獻）——同場 wOBA AUC 0.93 vs 賽前滾動 wOBA AUC 0.46，證實論文 ≈0.97 全來自同場目標洩漏。pitch-level 推翻**未達正式門檻**（所有模型配對 CI 重疊），但 5/5 base model 方向一致提升約 +0.05（最佳 RF 達 0.546、CI 上緣 0.604，觸及運動預測 leak-free 文獻天花板 0.57–0.60 下緣）。因 N=380 的標準誤 ≈0.05 恰等於效果量，且 rebas 無更多 release，CI 重疊是資料量硬上限。誠實表述：box-score 的「無訊號」不外推為「pitch-level 亦無訊號」，真相在中間——「具提示性但統計不確定」。
+### Stage 5 — 非監督式特徵發現（5.1–5.20）
+- **子目標**：在 pre-game 特徵空間裡，用多演算法交叉驗證地發現穩定、可解釋的群結構，並蒸餾成衍生特徵。
+- **方法**：低變異 + |ρ|≥0.95 冗餘剪枝 → 分組標準化 → **PCA**（scree / biplot / loadings / 3D）→ **六方法 K 共識**（elbow / silhouette / CH / DBI / gap / BIC 投票）→ **階層分群 4-linkage + 5% balance gate** → K-Means / GMM / HDBSCAN 並行 → validity panel + **bootstrap-Jaccard** → per-point silhouette → UMAP / t-SNE → cluster mean/SD + radar + notched boxplot + **surrogate RF + Tree-SHAP** + **ANOVA F + MI** → 2023 vs 2024 cluster shift + Sankey → derived feature register。
+- **結論**：PCA 需 **24 個 PC** 達 90% 累積 PVE（lag 特徵結構較散，預期內）；六方法投票 ⇒ **k=2**（k=2 與 k=3 並列、取最小）；階層分群中 `average` cophenetic 最高（0.647）但 k=2 退化成 1315 vs 5 外點隔離、被 balance gate 過濾，故 hierarchy 採 **`ward` k=2**；**最終演算法 K-Means k=2**（silhouette ≈ **0.115**、bootstrap-Jaccard ≈ **0.918**——穩定度高、分離度普通，是 pre-game 特徵的自然特性）；ANOVA F+MI 共識排名與 SHAP 命名雙重佐證；**cluster 0 = 近 5–10 場 run_diff↑（球隊熱）、cluster 1 = 近期 run_diff↓（球隊冷）**；`cluster_id` / `gmm_p` / `pc` 已寫入 register；2023 vs 2024 比例 + Sankey 描繪了跨季 meta 變化。
 
-### Stage 6 — 結論
-- **子目標**：誠實總結專案達成與否。
-- **方法**：對帳預先登記門檻、援引運動預測文獻定位結果。
-- **結論**：在兩季規模、box-score 特徵下，CPBL 單場主隊勝負於賽前**接近不可預測**；此為文獻可預期的結果而非專案失敗（見下方總結）。
+### Stage 6 — 綜合整理與建模建議
+- **子目標**：把非監督發現對接回學長名單，產出可放進報告 / 簡報的設計摘要。
+- **方法**：focus / lag features 與非監督結構的 overlap 表（PCA loading + SHAP 的 `combined_score` 排序）；列出新增候選特徵；一頁 research design summary。
+- **結論**：產出 `stage6_focus_overlap.csv` / `stage6_new_candidate_features.csv` / `stage6_feature_strategy.csv` / `stage6_research_design_summary.csv`；**非監督新增 8 個候選特徵 = `cluster_id` + `gmm_p0..p3` + `pc1..pc3`**，已備妥供下游監督式模型對照。
 
-### Stage 7 — 部署 R Shiny
-- **子目標**：把產出物變成可被點擊理解的展示。
-- **方法**：precompute 契約（`predictions.csv`、`best_model.joblib`、`feature_schema.json` 與六張圖），R Shiny 零計算、僅渲染（不用 reticulate，部署安全）。
-- **結論**：定調為**方法論展示而非預測產品**——以圖 4 的 holdout 陷阱為核心，誠實呈現「walk-forward AUC ≈ 0.53、附信賴區間」，避免任何「精準預測」措辭。
-
-### Stage 8 — 可重現性
-- **子目標**：確保整條流程一鍵可重現、不存在 stale 程式。
-- **方法**：單一自含 notebook `python/cpbl_pipeline.ipynb`（12 cell），Colab 中 Run all 即由上而下跑完；內建程式版本驗證與「投手特徵確實進入產出物」的硬斷言；完整決策日誌記於 `reports/progress.md`。
-- **結論**：以 `build_report_html.py` 產出單檔、UTF-8、中文安全（base64 內聯九張圖、不需 pandoc／LaTeX）的自含報告，瀏覽器開啟即可列印 PDF。
+### Stage 7 — 最終 CSV 輸出
+- **子目標**：把整條管線蒸餾成單一、leak-free、可被下游直接吃的特徵檔。
+- **方法**：先 preview ARTIFACTS registry；寫出 `final_features.csv`（ORIGINAL + SEMANTIC + NUMERIC + UNSUPERVISED 四群，鍵為 `(game_id, team)`）；`DOWNLOAD_ALL=True` 時一鍵打包 `/tmp/cpbl_artifacts.zip`。
+- **結論**：`DOWNLOAD_ALL=False` 預設不留 side-effect，notebook 自含可重現；翻成 `True` 重跑即可重生 `Results/stage*/` 全部 51 個 artifacts。
 
 ---
 
-## 4. 總結
+## 4. 主要結論（status quo）
 
-- **達成了什麼**：一條時序嚴謹、可辯護的評估管線，得到一個**乾淨的負面結論**——在現有兩季公開資料下，沒有任何特徵組（球場／天氣／球隊戰力／打者／投手）能在嚴謹樣本外評估中與「純主場優勢」區分，各組 season-OOF AUC 全在 0.50 附近 ±0.05 帶內。
-- **方法論價值（最具教學意義）**：管線兩度自動戳破誘人的小樣本 holdout 假訊號（RF 0.656、投手 0.689→0.463），是「為何不可用小樣本 holdout 排名」的活教材；並產出圖 8 的洩漏可視化證明，實證同聯盟論文 AUC 0.97 全來自同場目標洩漏。
-- **結果合理性**：此負面結果與文獻一致——即使 Las Vegas 盤口在 MLB 也僅約 58.2% 準確率、學術模型約 57–59.5%；兩季 CPBL 得到 ≈0.50–0.53 樣本外 AUC，落在理論天花板之下的合理位置。
-- **限制**：僅兩季樣本；rebas 不提供賽前 probable starter（投手特徵僅能回溯評分，無法支援真正的「今日」推論）；CPBL 樣本量遠小於 MLB；pitch-level 訊號因 N=380 而統計不確定。
-- **後續工作**：box-score 層級的特徵與調參已關閉（在此 N 下等同擬合雜訊）；唯一有紀律的延伸是 pitch-level 推翻消融。若未來 rebas 釋出更多賽季（目前無 2025／2026 release），可重新檢驗 pitch-level 那條「具提示性」的正向訊號是否能跨過正式門檻。部署交由 Sub-Agent 6（R Shiny）落地為方法論展示儀表板。
+| 指標 | 結果 |
+|---|---|
+| 樣本數 | **1320** team-game rows（2023 + 2024 去重後） |
+| Pre-game features | 60+ 個 `prior_* / opp_prior_* / season_to_date_* / h2h_* / stadium_prior_*` |
+| Pre-game ready | **1308 / 1320（99.1%）**；前 1–4 場 NaN 由 imputer 補中位數 |
+| Wang R port 對照 | **35 / 44** 數值欄 Pearson r ≥ 0.999（移植數值上等價） |
+| PCA k\* @ 90% PVE | **24** PCs |
+| K 共識（6 方法投票） | k=2 與 k=3 並列第一 → 採最小 **k=2** |
+| 階層分群最佳 linkage | `ward` k=2（cophenetic 0.327；balance gate 過 24.2%）；`average` cophenetic 最高 0.647 但退化成 1315 vs 5、被 gate 過濾 |
+| **最終演算法** | **K-Means k=2**（silhouette **0.115**、bootstrap-Jaccard **0.918**） |
+| Cluster 解讀 | cluster 0 = 近期 run_diff↑（熱）；cluster 1 = 近期 run_diff↓（冷） |
+| 新增候選特徵 | **8 個**：`cluster_id` + `gmm_p0..p3` + `pc1..pc3` |
+
+---
+
+## 5. 交付物與怎麼讀
+
+| 路徑 | 內容 |
+|---|---|
+| [`Results/notebook_executed.html`](Results/notebook_executed.html) | 程式碼無關的 HTML 報告（11 MB，HackMD 風格 sidebar tabs）：8 個 stage 的渲染輸出 + 中文「結果解讀」，無 Jupyter 也能開 |
+| [`Scripts/cpbl_unsupervised_feature_discovery.ipynb`](Scripts/cpbl_unsupervised_feature_discovery.ipynb) | 主 notebook（193 cells，含 inline outputs；每個 code cell 前都有【目標 / 說明 / 解釋結果】三段式 markdown） |
+| `Results/stage{2..6}/` | 51 個 CSV / PNG / HTML 產物，按 stage 分資料夾（stage5 再分 10 個編號子主題） |
+| [`docs/plan.md`](docs/plan.md) | 研究計畫書（goal / context / verification / risks） |
+| `docs/knowledge_base/` | 從 `course-material/` 蒸餾的 10 份方法論 KB |
+| `Scripts/legacy/` | 前期 pre-game 監督式 win-prediction 舊 notebook（已被本研究取代，保留備查） |
+
+**一鍵重建**：`./master.sh`（執行 notebook + 重生 HTML；第一次跑會自動下載 2024 release zip）。
+
+---
+
+## 6. 下一步建議
+
+- `DOWNLOAD_ALL=True` 重跑 → 重生 51 個 `Results/stage*/` artifacts，再跑 `Scripts/build/reorganize_stage5.py` 把 flat 輸出搬進 10 個子資料夾、`Scripts/build/build_report_html.py` 重生 HTML 報告。
+- **開一個 supervised baseline notebook**，比對「Wang 原始 features」vs「Wang + 本 notebook 的 `cluster_id` / `pc` / `gmm_p`」的 AUC，**量化非監督特徵實際帶來多少提升**——這是把本研究價值落地的關鍵一步。
+- 若想看 post-game 視角的 game-archetype，把 `USE_PREGAME_ONLY=False`、從 Stage 5 起重跑。
