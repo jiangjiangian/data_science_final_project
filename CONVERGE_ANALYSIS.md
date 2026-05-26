@@ -1,75 +1,89 @@
-# CPBL 2024 主客場勝負分析（converge_analysis）
+# CPBL 主客場勝負分析（converge_analysis）— 節奏／情勢，而非「得分量」
 
-> 本文件為 `converge_analysis.ipynb` 的**結論摘要與方法說明**。完整的「可執行 notebook（含程式、圖、逐 cell 兩段【解釋】）＋ Results/ 全部產物」因檔案過大/含二進位圖，無法經 API 推送，請見最下方「取得完整內容」以 bundle 一鍵還原。
+`converge_analysis.ipynb` 以 **team-game**（一隊一場）為單位、**球隊當分組因子**，循
+`EDA → 描述 → 推論 → 建模 → 非監督 → 結論` 的科學流程，回答：
+**單看「得分多寡」是否足以解釋主客勝負？若不夠，是「節奏／情勢」補上了什麼？**
 
-## 研究問題
-以**團隊-單場**資料（一列＝一支球隊在一場比賽的表現）檢視中華職棒 2024 年主客場差異，回答：**單看「得分多寡」是否足以解釋主客勝負？若不夠，還缺了什麼？**
+> 本版（v3）相對前版的主要升級：改用 **rebas 原始公開資料**、納入**真實 per-PA WPA/情勢**特徵、
+> 新增**節奏／攻勢標籤的顯著檢定**、**Bradley–Terry**、**手熱檢定**、**非監督原型分析**，
+> 並把所有【解釋】改為**由變數動態生成**（無硬寫數字），同時修正中文字型顯示。
 
-## 資料與方法
+## 資料來源（notebook 內下載原始資料）
 
-- **資料**：`cpbl_games_cleaned.csv`（`data` 分支，乾淨原始、每場一列、含逐局得分）。notebook 以 **`git fetch origin data`** 取檔，可獨立完整重現；所有節奏/情勢特徵皆由逐局得分**自行衍生**，不使用任何由比賽結果反推的標籤（避免結果/時間特性汙染）。
-  - 限制：`H/BB/SO` 為**整場兩隊合計**、無法分主客，故不做每隊投打控制分析。
-- **分析單位**：以 **team-game** 為主，並把「球隊」當分組因子——每隊分層 ＋ 解釋模型同時用 **`C(team)` 固定效果** 與 **team 隨機截距（混合效果模型）**，避免把六隊混為單一 population（Simpson's paradox）；`home_win`/勝差用 game-level。
-- **科學流程（先探索、後立論）**：`EDA → 描述統計 → 推論統計 → 建模 → 結論`；假設只在 EDA 之後生成、結論只在最後出現。
-- **方法嚴謹度**：cluster-robust 標準誤（依 `game_id` 分群）、GroupKFold（依 `game_id`）交叉驗證、permutation importance、連續勝差不分箱檢定＋分箱敏感度、效果量＋bootstrap 95% CI、Holm/BH 多重比較校正、Pythagorean 期望對照。
-- **兩個分析開關 (gates)**：`USE_TIME_LAG`（預設 `True`）、`EXPORT_OUTPUTS`（預設 `False`）。
+- **rebas-tw open-data 原始 release（逐場 JSON）**：notebook 執行時直接從 GitHub releases 下載
+  常規賽 zip，解析每場 JSON，快取於 `data/raw_rebas/`（不入庫）。
+  - 出處／授權：資料 © `rebas-tw/rebas.tw-open-data`，採 **ODC-By 1.0**（需標註出處）。
+- **球季**：`SEASON_SCOPE` 預設 **`2023+2024`**（可設 `2024`；env `CONVERGE_SEASONS` 覆寫）。
+  跨年為 pooled 分析；Elo 與賽前滾動特徵**逐季重置**、解釋模型加入 `C(season)`（台鋼雄鷹 2024 才加入）。
+- **比前版更強之處**：每場含 (1) 逐局得分序列；(2) **逐打席 `WPA`／`homeWE`（勝率期望）／`RE24`**
+  → 真實情勢掌控／攻勢壓力（不需自建勝率矩陣）；(3) **每隊 batterBox** → **可分主客**的
+  H/BB/SO/HR（**修正前版「H/BB/SO 為兩隊合計、無法分主客」的限制**）。
 
-## 主要結果
+## 方法重點
 
-**現象（穩健）**：主場勝率 **52.8%** > 客場 **47.2%**，但主場平均得分 **4.16 < 客場 4.24**（淨分差 −0.087）。主場 **Pythagorean 殘差 +0.037**（實際 0.528 > 期望 0.491） → 主隊把相同得失分**更有效率地轉成勝場**。
+- **特徵（自行衍生、透明）**：先馳得點、領先變化、早/中/後段得分、後段得分占比；per-PA
+  勝率期望波動 `we_volatility`、勝率穿越 50% 次數、最大單打席勝率擺盪、攻勢壓力 `bat_re24`、
+  情勢掌控 `bat_wpa(_pos)`、高槓桿 WPA；每隊 H/BB/SO/HR。
+- **★ 節奏／攻勢 標籤 + 顯著檢定**：把每個 team-game 標上**不含最終勝負**的節奏／攻勢類別標籤
+  （先馳得點、六局領先態勢、後段得分占比、攻勢強度 RE24、得分水準、情勢掌控 WPA），對每個標籤做
+  **卡方(標籤×win) + Cramér's V 效果量 + 各類別勝率 bootstrap 95% CI**，整個家族套
+  **Holm/BH 多重比較校正**。**circularity 安全閥**：定義用到最終勝負的 `game_flow_label`
+  （領先守成／後段逆轉／…）**只作描述與非監督觀察、不進推論**，避免套套邏輯。
+- **推論**：情勢×勝負卡方、連續勝差邏輯迴歸、勝差 Mann-Whitney（含 rank-biserial + bootstrap CI）、
+  逐隊主客差 + Wilcoxon（H5）、主檢定家族 Holm/BH。
+- **手熱／連勝檢定**：比較 P(勝|前勝) 與 P(勝|前敗)，以**置換檢定**作虛無分布——置換虛無的期望差
+  本身即量化並內含 **Miller–Sanjurjo** 有限樣本偏誤。
+- **建模**：解釋性羅吉斯（同場特徵 + `C(team)` 固定效果 + `C(season)`，cluster-robust SE）、
+  **team 隨機截距混合效果**、**情勢掌控 (WPA/RE24) 模型**、GroupKFold AUC + permutation importance；
+  **預測性**只用賽前滯後 (leak-free) 特徵（先前戰績、Elo、休息天數…）對照同場洩漏特徵；
+  **Bradley–Terry**（邏輯迴歸實作）分離**球隊實力 vs 主場優勢**；**Pythagorean / Pythagenpat**
+  期望勝率殘差；主場成因以**球場層級**檢視（rebas 無觀眾/裁判欄位）。
+- **非監督**：對節奏／情勢／攻勢特徵做相關熱圖、**PCA**（scree + 2D 以勝負上色）、**KMeans**
+  原型（k 由 silhouette 選）剖面 + 各群勝率，並與規則標籤交叉表對照。
 
-| 假設 | 檢定 / 模型 | 結果 | 判定 |
-|---|---|---|---|
-| H1 | 情勢×勝負 卡方 | p=0.194, V=0.096 | 分箱不顯著 |
-| H1（不分箱）| `home_win ~ |分差|` | 係數 −0.078, **p=0.046**, OR=0.925 | 方向成立、效果弱 |
-| H2 | 勝差 Mann-Whitney U | 主3.43 vs 客4.02, p=0.054, CI含0 | 邊緣、未達顯著 |
-| H3 | 整場合計量 vs 主場勝 | 全部 |ρ|≤0.11 | 成立（量不指示勝負）|
-| H4 | 先馳得點×勝負 卡方 | **p≈0（校正後仍顯著）**，先馳得點者約 70% 獲勝 | 穩健 |
-| H5 | 每隊主場優勢 | **−0.067(中信) ~ +0.158(台鋼)**；6 隊 Wilcoxon p=0.156 | 描述明確、推論受限 |
+## 主要發現（快照：`SEASON_SCOPE=2023+2024` 預設執行；實際數字以 notebook 動態輸出為準）
 
-多重比較校正（Holm/BH）後，整個檢定家族中僅 **H4 先馳得點** 穩健顯著。
+- **現象**：主場勝率 **52.9%** > 客場 47.1%，但主場平均得分 **4.19 反而略低於**客場 4.25；
+  **Pythagenpat 主場殘差 +0.035** → 主隊把相同得失分更有效率地轉成勝場。
+- **★ 節奏／攻勢標籤顯著檢定**：**6/6 個標籤經 Holm/BH 校正後仍顯著**；效果量由大到小為
+  **六局領先態勢（Cramér's V=0.73）> 攻勢強度 RE24 > 得分水準 > 先馳得點 > 情勢掌控 WPA > 後段得分占比**。
+  各類別 bootstrap 95% CI 多不重疊（如攻勢受阻勝率約 11% vs 火力強勢約 86%）→ **節奏／攻勢型態確實區隔勝率**。
+- **得分量 vs 主場優勢（H3 修正）**：用**每隊自身**（非兩隊合計）量檢視，自身得分量與勝負正相關
+  （runs_scored ρ≈0.62、run_diff ρ≈0.87）；**但主場優勢不是靠「得分更多」**（主場得分未較高卻勝率較高）。
+- **主場淨效果**：控制得分／節奏／球隊（及 season）後 **`is_home` OR≈2.09（cluster-robust p≈0.006）**，
+  固定效果與混合效果雙重佐證為**隊內**真實主場效應；情勢掌控 (WPA/RE24) 與勝負顯著相關。
+- **Bradley–Terry**：分離出球隊實力排序，主場優勢 HFA → 對等對戰主隊勝率約 **0.529**（與 raw 主場勝率一致，真實但溫和）。
+- **手熱效應**：P(勝|前勝)≈P(勝|前敗)，置換 **p≈0.62 不顯著**（無顯著序列依賴）。
+- **預測 vs 解釋**：**賽前 leak-free 預測 AUC≈0.51≈隨機**；同場洩漏特徵 AUC≈0.96（不可用於賽前預測）。
+  → **主場優勢可「解釋」卻難以「預測」**。
+- **非監督**：PCA 2D 沿 PC1 清楚分出勝/負；KMeans 原型勝率剖面與規則標籤一致 → 再次佐證節奏／情勢是主軸。
 
-### 解釋性模型（4a）
+## 結論
 
-控制得分量與節奏後，**主場身分 `is_home` 顯著**：OR≈**1.96**（cluster-robust p=0.032）；**加入球隊固定效果 `C(team)` 後幾乎不變**（OR≈**2.02**, p=0.030）。**另以 team 隨機截距的混合效果模型（BinomialBayesMixedGLM）佐證**：is_home 後驗平均 ≈**0.60**（OR≈**1.8**）方向一致、team 間基線變異小——**固定效果與隨機效果雙重確認主場為隊內真實效應**（非球隊強弱混淆，正面回應 H5）。惟 `is_home` 的 permutation importance 僅 0.004 → **關聯顯著 ≠ 預測增益大**。
+主場優勢**真實但溫和**，來源**不是得分變多**，而是「近身戰佔優 ＋ 把得分更有效率轉換為勝場
+（Pythagenpat 正殘差）＋ 節奏／情勢（先馳得點、六局領先、情勢掌控）」的綜合效果；控制球隊與得分後
+主場身分仍顯著（OR≈2）且為隊內效應。然而賽前可預測性極低（leak-free AUC≈0.5）。
 
-### 預測性模型（4b，time-lag gate True 與 False 都計算）
+**侷限**：rebas 原始資料不含觀眾數/裁判，主場成因僅能以球場層級觀察；單一聯盟、球隊數少（H5 檢力受限）；
+跨年為 pooled（已逐季重置 Elo/滾動特徵、解釋模型控制 season，但 Bradley–Terry 視實力跨季固定為近似）；
+WPA/RE24 為資料提供者口徑。
 
-| 設定 | 特徵 | GroupKFold AUC | 性質 |
-|---|---|---|---|
-| **time-lag=True（預設, leak-free）** | 賽前滯後：先前勝率/淨分差/近10場得失分/休息天數/對手先前勝率/Elo | **0.492 ≈ 隨機** | 誠實的賽前預測基準 |
-| **time-lag=False（對照）** | 同場：led_after_6/late_share/runs… | **0.941** | **資料洩漏**（賽前取不到），不能用於真實預測 |
-
-→ 0.94 看似精準實為洩漏；這正說明 time-lag gate 為何**預設 True**：擋掉洩漏特徵、只留賽前資訊。
-
-## 結論（平衡）
-
-2024 CPBL 主場優勢**真實但溫和**，來源**不是得分變多**，而是「近身戰佔優 ＋ 把得分更有效率地轉換為勝場（Pythagorean 正殘差）＋ 節奏/情勢（先馳得點、晚段領先）」的綜合效果；控制球隊與得分後主場身分仍有顯著淨關聯（OR≈2，固定/隨機效果一致）且為隊內效應。然而**賽前可預測性極低**（leak-free AUC≈0.49）——主場優勢可『解釋』卻難以『預測』。
-
-**侷限與後續**：(1) `H/BB/SO` 為整場合計，無法做每隊投打控制；(2) 單季 358 場，H2/H5 檢力不足；(3) 同場特徵僅能用於解釋（會洩漏）。**後續**：跨季擴充樣本、取得每隊投打與先發/傷兵資料、以 leverage/WPA 量化情勢，並以 time-lag 滯後特徵為起點建立真正賽前預測模型。
-
-## Results/ 產物結構（`EXPORT_OUTPUTS=True` 時產生）
-
-```text
-Results/
-├── stage1_eda/            5 PNG（主客勝率/得分、各隊主場優勢、勝差分布、相關熱圖）
-├── stage2_descriptive/    6 CSV（describe、主客比較、每隊主場優勢、每勝得分效率、Pythagorean）
-├── stage3_inferential/    3 CSV（情勢卡方、每隊主場優勢、多重比較校正）
-└── stage4_model/          6 CSV + 1 PNG（解釋 FE、混合效果 RE、GroupKFold AUC、4b 兩設定係數與 AUC 對照、permutation importance）
-```
-
-## 取得完整內容（可執行 notebook + 全部 Results 圖表 + 資料）
-
-完整內容已打包成 git bundle（由助理交付）。在本機還原並推上本分支：
+## 重現方式
 
 ```bash
-git clone converge_analysis.bundle converge_full && cd converge_full
-git remote add final https://github.com/jiangjiangian/data_science_final_project.git
-git push final converge-analysis:claude/feature-engineering-analysis-OkMa1
-```
-
-或在 clone 內直接執行 notebook 重生全部圖表：
-
-```bash
+# 預設球季 2023+2024；單看 2024 可加 CONVERGE_SEASONS=2024
 CONVERGE_EXPORT=true jupyter nbconvert --to notebook --execute --inplace converge_analysis.ipynb
 ```
+
+`EXPORT_OUTPUTS`（env `CONVERGE_EXPORT`，預設 False）控制是否把表/圖輸出到 `Results/`；
+`USE_TIME_LAG`（預設 True）控制預測階段是否只用賽前 leak-free 特徵。中文字型由 `setup_chinese_font()`
+自動偵測並註冊已安裝的 CJK 字型（修正 matplotlib 字型快取過期導致中文變方框），找不到才上網下載。
+
+> ⚠️ **完整可執行 notebook（含圖與每 cell 動態【解釋】）＋ `Results/` 全部圖表**因檔案過大／含二進位圖，
+> 無法經 GitHub API 推送。請用助理交付的 **git bundle**（`converge_analysis.bundle`）在本機還原：
+> `git clone converge_analysis.bundle repo && cd repo`（分支 `converge-analysis`），
+> 或在既有 clone 內 `git pull /path/to/converge_analysis.bundle converge-analysis`；
+> 亦可在 clone 內以上方 `nbconvert --execute` 重生全部產物。
+
+---
+_Generated by [Claude Code](https://claude.ai/code/session_01Mj4Zgbu5EEfzNvYYUx8WFe)_
