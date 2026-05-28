@@ -15,8 +15,8 @@ from __future__ import annotations
 import nbformat, html, re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-NB = ROOT / "converge_analysis.ipynb"
+ROOT = Path(__file__).resolve().parent.parent.parent
+NB = ROOT / "Scripts" / "converge_analysis.ipynb"
 OUT = ROOT / "Results" / "notebook_executed.html"
 ASSETS = Path(__file__).resolve().parent / "report_assets"
 CSS = (ASSETS / "report.css").read_text(encoding="utf-8")
@@ -101,6 +101,8 @@ def md_inline(s):
 
 
 def md_to_html(text):
+    if not text.strip():
+        return ""
     out, in_ul = [], False
 
     def close_ul():
@@ -239,6 +241,40 @@ S = {
 "7.1": ("輸出（資料表與圖落地）",
 "<p><strong>讀法指引</strong>：列出所有輸出物件；<code>EXPORT_OUTPUTS=True</code> 時依 <code>stage</code> 寫到 <code>Results/</code> 各子資料夾。</p>",
 "<p><strong>本次結果</strong>：共登錄 <strong>27 個輸出（9 圖 / 18 表）</strong>，已寫入 <code>Results/stage1_eda … stage5_unsupervised</code>。<br><strong>意義</strong>：本 HTML 報告即由這些 figure／table 組成；下游若要重用，直接讀 <code>Results/</code> 對應 CSV／PNG 即可。</p>"),
+
+"R.1": ("References / 參考來源",
+"",
+"""<p>本研究的方法與報告風格受到下列材料啟發；技術細節（演算法、效果量、多重比較）皆從通用統計與棒球分析文獻取得，實作為原創。</p>
+
+<h4 class='sub-heading'>A. 同源 repo（cde52470/data_science）</h4>
+<ul>
+  <li><strong><code>cde52470/data_science@data-analysis</code></strong>（本 repo 落地 cde52470 後置於 <code>legacy/version2/</code>）
+    <ul>
+      <li><code>Scripts/cpbl_unsupervised_feature_discovery.ipynb</code> — stage 結構、K 共識六方法投票、bootstrap-Jaccard、PCA → 分群 → 解讀 的流程樣板。</li>
+      <li><code>Scripts/build/build_report_html.py</code> + <code>inject_explanations.py</code> — 本 HTML 報告的「三段式（讀法指引 → output → 本次結果與意義）」模板與 sidebar TOC 直接沿用；CSS／JS 同款（<code>Scripts/build/report_assets/report.css</code>、<code>sidebar.js</code>）。</li>
+      <li><code>docs/knowledge_base/</code> — 10 份 KB markdown（PCA-SVD、unsupervised、measurement、SHAP/LIME、featureReduction…），是本研究演算法選擇的學理依據。</li>
+    </ul>
+  </li>
+  <li><strong><code>cde52470/data_science@analyze_wang</code></strong> — 王學長監督式分析（logistic / RF / XGBoost + SHAP）；本研究的 <code>scored_first</code>、<code>led_after_6</code>、<code>late_runs</code>、<code>run_per_hit</code>、<code>whip_like</code> 等特徵定義與其 R 程式對齊。</li>
+</ul>
+
+<h4 class='sub-heading'>B. 公開資料與授權</h4>
+<ul>
+  <li><strong>rebas-tw open data</strong> — <a href='https://github.com/rebas-tw/rebas.tw-open-data'>github.com/rebas-tw/rebas.tw-open-data</a>，CPBL 官方資料社群整理版，授權 <strong>ODC-By 1.0</strong>。Notebook 階段 0.3 直接從 GitHub releases 下載原始 zip（2023.0／2023.1／2024）。</li>
+</ul>
+
+<h4 class='sub-heading'>C. 方法論</h4>
+<ul>
+  <li><strong>Pythagenpat 動態指數</strong> — Davenport / Patriot；指數 = <code>((RS+RA)/G)^0.287</code>。</li>
+  <li><strong>Bradley–Terry 模型</strong> — 以邏輯迴歸實作，主場項分離 HFA。</li>
+  <li><strong>Miller–Sanjurjo 偏誤</strong> — Miller &amp; Sanjurjo (2018, <em>Econometrica</em> 86(6): 2019–2047)；本研究以置換檢定內含校正。</li>
+  <li><strong>Holm / Benjamini–Hochberg</strong> — 多重比較校正（statsmodels 實作）。</li>
+  <li><strong>Cramér's V</strong> — 卡方效果量；circularity 安全閥概念見 0.5 / 3.2 節。</li>
+  <li><strong>per-PA WPA / homeWE / RE24</strong> — rebas schema 內建欄位；用於情勢掌控、攻勢壓力指標。</li>
+</ul>
+
+<h4 class='sub-heading'>D. 開發過程</h4>
+<p>本 repo 與 <code>jiangjiangian/data_science_final_project@converge_analysis</code> 分支同步開發；HTML 報告由 <code>Scripts/build/build_converge_report.py</code> 自動產生。</p>"""),
 }
 
 STAGES = [
@@ -250,6 +286,7 @@ STAGES = [
     ("5", "階段 5 — 非監督觀察", ["5.1"]),
     ("6", "階段 6 — 收斂結論", ["6.1", "6.2"]),
     ("7", "階段 7 — 輸出", ["7.1"]),
+    ("R", "附錄 — 參考來源 (References)", ["R.1"]),
 ]
 
 STAGE_SUMMARIES = {
@@ -279,6 +316,9 @@ STAGE_SUMMARIES = {
           "控制後 is_home 穩健、Bradley–Terry 確認主場真實但溫和。",
           "賽前 leak-free 預測力≈隨機——主場優勢『可解釋、難預測』。"],
     "7": ["共 27 個輸出（9 圖 / 18 表）寫入 Results/，本報告即由其組成。"],
+    "R": ["列出本研究借用／參考的 cde52470/data-analysis 材料（notebook、build template、KB markdown）。",
+          "公開資料授權 ODC-By 1.0；方法論文獻（Pythagenpat、Bradley–Terry、Miller–Sanjurjo、Holm/BH、Cramér's V）。",
+          "技術實作為原創；風格與 stage 結構受同學的非監督式特徵發現專案影響。"],
 }
 
 MERMAID = """
